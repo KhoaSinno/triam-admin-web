@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { adminFetch, AdminAuditLogItem, AdminAuditLogsResponse } from "@/lib/api";
+import { adminFetch, AdminAuditLogsResponse } from "@/lib/api";
 import {
   FileText,
   ChevronLeft,
@@ -69,14 +69,6 @@ function AuditLogsContent() {
   const [adminUserId, setAdminUserId] = useState(initialAdminId);
   const [limit] = useState(20);
   const [offset, setOffset] = useState(0);
-
-  // Sync state with URL params
-  useEffect(() => {
-    const act = searchParams.get("action");
-    if (act) setAction(act);
-    const adm = searchParams.get("admin_user_id");
-    if (adm) setAdminUserId(adm);
-  }, [searchParams]);
 
   // Formulate query request URL
   const buildQueryPath = () => {

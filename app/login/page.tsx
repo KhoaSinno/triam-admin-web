@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/context/auth-context";
+import { getErrorMessage } from "@/lib/api";
 import { KeyRound, Mail, LogIn, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,9 +44,10 @@ export default function LoginPage() {
       } else {
         toast.success("Đăng nhập thành công!");
       }
-    } catch (err: any) {
-      setErrorMsg("Đã xảy ra lỗi kết nối.");
-      toast.error("Lỗi kết nối tới hệ thống.");
+    } catch (err: unknown) {
+      const message = getErrorMessage(err, "Đã xảy ra lỗi kết nối.");
+      setErrorMsg(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -65,8 +67,8 @@ export default function LoginPage() {
         setErrorMsg(error.message);
         toast.error("Lỗi Google Auth: " + error.message);
       }
-    } catch (err: any) {
-      setErrorMsg("Đã xảy ra lỗi kết nối Google Auth.");
+    } catch (err: unknown) {
+      setErrorMsg(getErrorMessage(err, "Đã xảy ra lỗi kết nối Google Auth."));
     } finally {
       setLoading(false);
     }

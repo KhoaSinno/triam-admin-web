@@ -4,7 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useRef } from "r
 import { useRouter, usePathname } from "next/navigation";
 import { User } from "@supabase/supabase-js";
 import { supabase, setClientToken } from "@/lib/supabase";
-import { adminFetch, AdminMeResponse } from "@/lib/api";
+import { adminFetch, AdminMeResponse, getErrorMessage } from "@/lib/api";
 
 type AuthContextType = {
   user: User | null;
@@ -29,7 +29,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Keep track of current user and profile values to avoid stale closure in useEffect
   const stateRef = useRef({ user, profile });
-  stateRef.current = { user, profile };
+
+  useEffect(() => {
+    stateRef.current = { user, profile };
+  }, [user, profile]);
 
   const logout = async () => {
     setLoading(true);
@@ -41,8 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsForbidden(false);
       setError(null);
       router.push("/login");
-    } catch (err: any) {
-      console.error("Error during sign out:", err);
+    } catch (err: unknown) {
+      console.error("Error during sign out:", getErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -54,17 +57,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await adminFetch<AdminMeResponse>("/me");
       setProfile(data);
       setIsForbidden(false);
-    } catch (err: any) {
-      console.error("Failed /me check:", err.message);
-      if (err.message === "ADMIN_FORBIDDEN" || err.message === "Admin permission required.") {
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      console.error("Failed /me check:", message);
+      if (message === "ADMIN_FORBIDDEN" || message === "Admin permission required.") {
         setIsForbidden(true);
         setProfile(null);
-      } else if (err.message === "UNAUTHORIZED" || err.message === "NO_SESSION") {
+      } else if (message === "UNAUTHORIZED" || message === "NO_SESSION") {
         setIsForbidden(false);
         setProfile(null);
         await supabase.auth.signOut();
       } else {
-        setError(err.message || "An error occurred checking permissions.");
+        setError(message || "An error occurred checking permissions.");
       }
     }
   };

@@ -3,14 +3,13 @@
 import React, { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { adminFetch, AdminUserListItem, AdminUsersResponse } from "@/lib/api";
+import { adminFetch, AdminUsersResponse } from "@/lib/api";
 import {
   Users,
   Copy,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Search,
   BookOpen,
   Cpu,
   Bell,

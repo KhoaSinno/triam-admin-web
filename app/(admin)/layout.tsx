@@ -12,6 +12,7 @@ import {
   FileText,
   LogOut,
   Terminal,
+  LibraryBig,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -87,6 +88,7 @@ export default function AdminLayout({
     { name: "Tổng quan", href: "/dashboard", icon: LayoutDashboard },
     { name: "Người dùng", href: "/users", icon: Users },
     { name: "Sách", href: "/books", icon: BookOpen },
+    { name: "Sách hệ thống", href: "/system-books", icon: LibraryBig },
     { name: "Jobs xử lý", href: "/jobs", icon: Cpu },
     { name: "Nhật ký hệ thống", href: "/audit-logs", icon: FileText },
   ];

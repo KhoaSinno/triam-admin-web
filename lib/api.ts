@@ -151,3 +151,11 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
 
   return body as T;
 }
+
+export function getErrorMessage(error: unknown, fallback = "Đã xảy ra lỗi."): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+}

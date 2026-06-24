@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { adminFetch, AdminBookListItem, AdminBooksResponse, BookStatus, DocumentType } from "@/lib/api";
+import { adminFetch, AdminBooksResponse, BookStatus, DocumentType } from "@/lib/api";
 import {
   BookOpen,
   Copy,
@@ -11,7 +11,6 @@ import {
   ChevronRight,
   RefreshCw,
   Search,
-  Filter,
   X,
   Calendar,
   AlertTriangle,
@@ -50,18 +49,6 @@ function BooksContent() {
       clearTimeout(handler);
     };
   }, [searchVal]);
-
-  // Sync state with URL queries when they change externally
-  useEffect(() => {
-    const currentStatus = searchParams.get("status") as BookStatus;
-    if (currentStatus) setStatus(currentStatus);
-    
-    const currentUser = searchParams.get("user_id");
-    if (currentUser) setUserId(currentUser);
-
-    const currentQ = searchParams.get("q");
-    if (currentQ) setSearchVal(currentQ);
-  }, [searchParams]);
 
   // Formulate Query Path
   const buildQueryPath = () => {

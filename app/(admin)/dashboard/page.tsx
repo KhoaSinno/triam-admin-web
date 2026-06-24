@@ -44,7 +44,7 @@ export default function DashboardPage() {
     try {
       await refetch();
       toast.success("Đã làm mới dữ liệu tổng quan");
-    } catch (err) {
+    } catch {
       toast.error("Lỗi khi làm mới dữ liệu");
     }
   };

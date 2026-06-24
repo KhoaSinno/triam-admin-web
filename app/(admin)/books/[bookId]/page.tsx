@@ -3,13 +3,12 @@
 import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminFetch, AdminBookDetailResponse, AdminJobListItem } from "@/lib/api";
+import { adminFetch, AdminBookDetailResponse, AdminJobListItem, getErrorMessage } from "@/lib/api";
 import {
   ArrowLeft,
   BookOpen,
   Calendar,
   FileCode,
-  User,
   Info,
   Cpu,
   RefreshCw,
@@ -63,8 +62,8 @@ export default function BookDetailPage() {
         router.push(`/jobs?book_id=${bookId}`);
       }
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Không thể khởi động lại job.");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Không thể khởi động lại job."));
       setShowConfirmModal(false);
     },
   });

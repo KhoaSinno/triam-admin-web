@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, Suspense } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   adminFetch,
   AdminJobListItem,
   AdminJobsResponse,
+  getErrorMessage,
   ProcessingJobStatus,
   ProcessingJobType,
 } from "@/lib/api";
@@ -15,17 +16,12 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Filter,
   X,
   Copy,
   Calendar,
   AlertTriangle,
   Play,
   Eye,
-  Coins,
-  Clock,
-  ArrowRight,
-  CheckCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -51,18 +47,6 @@ function JobsContent() {
   // Modal confirm state
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-
-  // Sync state with URL params
-  useEffect(() => {
-    const s = searchParams.get("status") as ProcessingJobStatus;
-    if (s) setStatus(s);
-    const jt = searchParams.get("job_type") as ProcessingJobType;
-    if (jt) setJobType(jt);
-    const u = searchParams.get("user_id");
-    if (u) setUserId(u);
-    const b = searchParams.get("book_id");
-    if (b) setBookId(b);
-  }, [searchParams]);
 
   // Formulate query URL
   const buildQueryPath = () => {
@@ -105,8 +89,8 @@ function JobsContent() {
       setShowConfirmModal(false);
       setSelectedJobId(null);
     },
-    onError: (err: any) => {
-      toast.error(err.message || "Lỗi khi chạy lại Job.");
+    onError: (err: unknown) => {
+      toast.error(getErrorMessage(err, "Lỗi khi chạy lại Job."));
       setShowConfirmModal(false);
       setSelectedJobId(null);
     },

@@ -75,22 +75,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const isAuthCallback = typeof window !== "undefined" && (
+      window.location.hash.includes("access_token=") ||
+      window.location.hash.includes("id_token=") ||
+      window.location.hash.includes("error=") ||
+      window.location.hash.includes("recovery_token=") ||
+      window.location.search.includes("code=")
+    );
+
+    if (isAuthCallback) {
+      // Set a fallback timer in case the auth callback parsing fails or hangs
+      fallbackTimer = setTimeout(() => {
+        if (mounted) {
+          console.warn("Auth callback fallback timeout reached. Forcing loading state to false.");
+          setLoading(false);
+        }
+      }, 5000);
+    }
 
     // Check current session
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (!mounted) return;
 
       if (session) {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         setClientToken(session.access_token);
         setUser(session.user);
         await checkAdminStatus();
+        setLoading(false);
       } else {
-        setClientToken(null);
-        setUser(null);
-        setProfile(null);
-        setIsForbidden(false);
+        // If there's an auth callback, don't set loading to false yet; let onAuthStateChange handle it.
+        if (!isAuthCallback) {
+          setClientToken(null);
+          setUser(null);
+          setProfile(null);
+          setIsForbidden(false);
+          setLoading(false);
+        }
       }
-      setLoading(false);
     });
 
     // Listen for auth changes
@@ -99,15 +123,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
-      const hasCurrentUser = !!stateRef.current.user;
-      const hasProfile = !!stateRef.current.profile;
-
       if (session) {
+        if (fallbackTimer) clearTimeout(fallbackTimer);
         setClientToken(session.access_token);
         setUser(session.user);
         
         // Only trigger full-screen loading spinner if we don't already have an active admin session.
         // For background token refreshes, perform a silent validation.
+        const hasCurrentUser = !!stateRef.current.user;
+        const hasProfile = !!stateRef.current.profile;
         if (!hasCurrentUser || !hasProfile) {
           setLoading(true);
         }
@@ -115,16 +139,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await checkAdminStatus();
         setLoading(false);
       } else {
-        setClientToken(null);
-        setUser(null);
-        setProfile(null);
-        setIsForbidden(false);
-        setLoading(false);
+        // If we are currently processing a callback, don't immediately set loading to false.
+        // Let the fallback timer handle the failure, or wait for SIGNED_IN.
+        if (!isAuthCallback || event === "SIGNED_OUT") {
+          setClientToken(null);
+          setUser(null);
+          setProfile(null);
+          setIsForbidden(false);
+          setLoading(false);
+        }
       }
     });
 
     return () => {
       mounted = false;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
       subscription.unsubscribe();
     };
   }, []);

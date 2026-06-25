@@ -57,7 +57,9 @@ function SystemBooksContent() {
 
   // Modal States
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [processBook, setProcessBook] = useState<{ id: string; title: string } | null>(null);
+  const [processBook, setProcessBook] = useState<
+    AdminBookListItem | { id: string; title: string; has_full_mode?: boolean; has_pareto_mode?: boolean } | null
+  >(null);
   const [confirmDeleteBook, setConfirmDeleteBook] = useState<{ id: string; title: string } | null>(null);
 
   // File Upload State
@@ -82,6 +84,19 @@ function SystemBooksContent() {
       clearTimeout(handler);
     };
   }, [searchVal]);
+
+  // Auto-select mode when modal opens based on already ready/processing modes
+  useEffect(() => {
+    if (processBook) {
+      if (processBook.has_full_mode && !processBook.has_pareto_mode) {
+        setProcessMode("pareto");
+      } else if (processBook.has_pareto_mode && !processBook.has_full_mode) {
+        setProcessMode("full");
+      } else {
+        setProcessMode("both");
+      }
+    }
+  }, [processBook]);
 
   // Formulate Query Path
   const buildQueryPath = () => {
@@ -294,18 +309,23 @@ function SystemBooksContent() {
     }
   };
 
-  // Publish / Share mutation
-  const publishMutation = useMutation({
-    mutationFn: (bookId: string) =>
-      adminFetch<AdminBookListItem>(`/books/${bookId}/share`, {
+  // Publish / Share toggle mutation
+  const toggleShareMutation = useMutation({
+    mutationFn: ({ bookId, share }: { bookId: string; share: boolean }) =>
+      adminFetch<AdminBookListItem>(`/books/${bookId}/share?share=${share}`, {
         method: "PATCH",
       }),
-    onSuccess: (data) => {
-      toast.success(`Đã xuất bản sách "${data.title}" ra thư viện hệ thống.`);
+    onSuccess: (data, variables) => {
+      if (variables.share) {
+        toast.success(`Đã xuất bản sách "${data.title}" ra thư viện hệ thống.`);
+      } else {
+        toast.success(`Đã thu hồi sách "${data.title}" khỏi thư viện hệ thống.`);
+      }
       queryClient.invalidateQueries({ queryKey: ["systemBooks"] });
     },
-    onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Không thể chia sẻ sách."));
+    onError: (err: unknown, variables) => {
+      const actionText = variables.share ? "chia sẻ" : "hủy chia sẻ";
+      toast.error(getErrorMessage(err, `Không thể ${actionText} sách.`));
     },
   });
 
@@ -373,6 +393,10 @@ function SystemBooksContent() {
       return dateStr;
     }
   };
+
+  const isBothDisabled = !!(processBook?.has_full_mode || processBook?.has_pareto_mode);
+  const isFullDisabled = !!processBook?.has_full_mode;
+  const isParetoDisabled = !!processBook?.has_pareto_mode;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -609,7 +633,26 @@ function SystemBooksContent() {
 
                     {/* Shared Status */}
                     <td className="px-6 py-4">
-                      {getSharedBadge(book.is_shared)}
+                      <div className="flex flex-col gap-1.5 items-start">
+                        {getSharedBadge(book.is_shared)}
+                        <div className="flex flex-wrap gap-1">
+                          {book.has_full_mode && (
+                            <span className="inline-flex items-center rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold">
+                              FULL Mode
+                            </span>
+                          )}
+                          {book.has_pareto_mode && (
+                            <span className="inline-flex items-center rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-bold">
+                              PARETO Mode
+                            </span>
+                          )}
+                          {!book.has_full_mode && !book.has_pareto_mode && (
+                            <span className="inline-flex items-center rounded bg-zinc-950 text-zinc-550 border border-zinc-850 px-1.5 py-0.5 text-[9px] font-bold">
+                              Chưa xử lý
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Document Type */}
@@ -644,22 +687,42 @@ function SystemBooksContent() {
                         {/* Trigger Processing Button */}
                         {book.status !== "processing" && (
                           <button
-                            onClick={() => setProcessBook({ id: book.id, title: book.title })}
-                            className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
-                            title="Chạy tiền xử lý (Audio/RAG)"
+                            onClick={() => !(book.has_full_mode && book.has_pareto_mode) && setProcessBook(book)}
+                            disabled={book.has_full_mode && book.has_pareto_mode}
+                            className={`rounded-lg p-1.5 border border-transparent transition-all ${
+                              book.has_full_mode && book.has_pareto_mode
+                                ? "text-zinc-650 cursor-not-allowed"
+                                : "text-zinc-450 hover:bg-zinc-800 hover:text-white hover:border-zinc-750"
+                            }`}
+                            title={
+                              book.has_full_mode && book.has_pareto_mode
+                                ? "Sách đã hoàn tất xử lý cả 2 chế độ học"
+                                : "Chạy tiền xử lý (Audio/RAG)"
+                            }
                           >
-                            <Settings2 className="h-4 w-4 text-violet-400" />
+                            <Settings2 className={`h-4 w-4 ${book.has_full_mode && book.has_pareto_mode ? "text-zinc-650" : "text-violet-400"}`} />
                           </button>
                         )}
                         
                         {/* Publish manually button */}
                         {["ready", "partial_ready"].includes(book.status || "") && !book.is_shared && (
                           <button
-                            onClick={() => publishMutation.mutate(book.id)}
+                            onClick={() => toggleShareMutation.mutate({ bookId: book.id, share: true })}
                             className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
                             title="Xuất bản ra Thư viện hệ thống"
                           >
                             <Share2 className="h-4 w-4 text-emerald-400" />
+                          </button>
+                        )}
+
+                        {/* Unpublish manually button */}
+                        {book.is_shared && (
+                          <button
+                            onClick={() => toggleShareMutation.mutate({ bookId: book.id, share: false })}
+                            className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
+                            title="Hủy xuất bản khỏi Thư viện"
+                          >
+                            <FolderLock className="h-4 w-4 text-amber-500" />
                           </button>
                         )}
 
@@ -827,49 +890,70 @@ function SystemBooksContent() {
                   Chế độ xử lý bài học
                 </label>
                 <div className="grid gap-2">
-                  <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 hover:bg-zinc-850/30 cursor-pointer transition-all">
+                  <label className={`flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-all ${
+                    isBothDisabled
+                      ? "opacity-35 cursor-not-allowed pointer-events-none"
+                      : "hover:bg-zinc-850/30 cursor-pointer"
+                  }`}>
                     <input
                       type="radio"
                       name="processMode"
                       value="both"
                       checked={processMode === "both"}
-                      onChange={() => setProcessMode("both")}
+                      onChange={() => !isBothDisabled && setProcessMode("both")}
+                      disabled={isBothDisabled}
                       className="mt-1 accent-violet-500"
                     />
                     <div>
-                      <span className="text-xs font-bold text-zinc-200 block">Cả hai (FULL & PARETO)</span>
+                      <span className="text-xs font-bold text-zinc-200 block">
+                        Cả hai (FULL & PARETO) {isBothDisabled && <span className="text-[10px] text-zinc-500 font-normal ml-1.5">(Đã có một chế độ sẵn sàng)</span>}
+                      </span>
                       <span className="text-[10px] text-zinc-500 mt-1 block leading-relaxed">
                         Chạy song song cả 2 chế độ. Tự động chuyển đổi mượt mà. Khuyên dùng cho Sách hệ thống.
                       </span>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 hover:bg-zinc-850/30 cursor-pointer transition-all">
+                  <label className={`flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-all ${
+                    isFullDisabled
+                      ? "opacity-35 cursor-not-allowed pointer-events-none"
+                      : "hover:bg-zinc-850/30 cursor-pointer"
+                  }`}>
                     <input
                       type="radio"
                       name="processMode"
                       value="full"
                       checked={processMode === "full"}
-                      onChange={() => setProcessMode("full")}
+                      onChange={() => !isFullDisabled && setProcessMode("full")}
+                      disabled={isFullDisabled}
                       className="mt-1 accent-violet-500"
                     />
                     <div>
-                      <span className="text-xs font-bold text-zinc-200 block">FULL Mode (Đầy đủ)</span>
+                      <span className="text-xs font-bold text-zinc-200 block">
+                        FULL Mode (Đầy đủ) {isFullDisabled && <span className="text-[10px] text-emerald-400 font-normal ml-1.5">(Đã hoàn tất xử lý)</span>}
+                      </span>
                       <span className="text-[10px] text-zinc-500 mt-1 block">Sinh toàn bộ các bài học trong sách (100% nội dung).</span>
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 hover:bg-zinc-850/30 cursor-pointer transition-all">
+                  <label className={`flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 transition-all ${
+                    isParetoDisabled
+                      ? "opacity-35 cursor-not-allowed pointer-events-none"
+                      : "hover:bg-zinc-850/30 cursor-pointer"
+                  }`}>
                     <input
                       type="radio"
                       name="processMode"
                       value="pareto"
                       checked={processMode === "pareto"}
-                      onChange={() => setProcessMode("pareto")}
+                      onChange={() => !isParetoDisabled && setProcessMode("pareto")}
+                      disabled={isParetoDisabled}
                       className="mt-1 accent-violet-500"
                     />
                     <div>
-                      <span className="text-xs font-bold text-zinc-200 block">PARETO Mode (Rút gọn)</span>
+                      <span className="text-xs font-bold text-zinc-200 block">
+                        PARETO Mode (Rút gọn) {isParetoDisabled && <span className="text-[10px] text-emerald-400 font-normal ml-1.5">(Đã hoàn tất xử lý)</span>}
+                      </span>
                       <span className="text-[10px] text-zinc-500 mt-1 block">Chỉ sinh các bài học của 20% chương mục trọng tâm nhất.</span>
                     </div>
                   </label>

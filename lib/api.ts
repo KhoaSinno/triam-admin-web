@@ -68,6 +68,8 @@ export type AdminBookListItem = {
   error_message: string | null;
   is_shared?: boolean;
   parent_shared_id?: string | null;
+  has_full_mode?: boolean;
+  has_pareto_mode?: boolean;
   created_at: string;
   updated_at: string;
 };

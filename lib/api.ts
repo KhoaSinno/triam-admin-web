@@ -66,6 +66,8 @@ export type AdminBookListItem = {
   total_sections: number | null;
   total_units: number | null;
   error_message: string | null;
+  is_shared?: boolean;
+  parent_shared_id?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -126,13 +128,22 @@ export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T
     throw new Error("NO_SESSION");
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/admin${path}`, {
+  const url = path.startsWith("/api/")
+    ? `${API_BASE_URL}${path}`
+    : `${API_BASE_URL}/api/v1/admin${path}`;
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+
+  if (!(init?.body instanceof FormData) && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  const res = await fetch(url, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (res.status === 401) {

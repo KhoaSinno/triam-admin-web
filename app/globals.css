@@ -1,20 +1,227 @@
 @import "tailwindcss";
 
 :root {
-  --background: #09090b;
-  --foreground: #fafafa;
+  --background: #f5f5f7;
+  --surface: #ffffff;
+  --surface-soft: #f0eee9;
+  --surface-raised: #faf9f6;
+  --border: #dedbd4;
+  --foreground: #1a1a1a;
+  --text-strong: #26231f;
+  --text-secondary: #625e57;
+  --text-muted: #827c73;
+  --brand: #ff9f1c;
+  --brand-strong: #e8890a;
+  --brand-soft: #fff1db;
+  --listening: #2ec4b6;
+  --logo-start: #d97900;
+  --logo-end: #168f85;
+  --selection: rgb(255 159 28 / 0.24);
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --background: #1a1a1a;
+  --surface: #252525;
+  --surface-soft: #2d2b28;
+  --surface-raised: #302f2c;
+  --border: #403d38;
+  --foreground: #faf9f6;
+  --text-strong: #f5f2ec;
+  --text-secondary: #c2bdb4;
+  --text-muted: #938d84;
+  --brand: #ff9f1c;
+  --brand-strong: #ffb454;
+  --brand-soft: #3b2b17;
+  --listening: #4ed7ca;
+  --logo-start: #ffb454;
+  --logo-end: #69ded3;
+  --selection: rgb(255 159 28 / 0.3);
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui;
+  --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular;
+
+  /* Compatibility mapping: existing utilities now resolve through Tri Âm tokens. */
+  --color-zinc-50: var(--foreground);
+  --color-zinc-100: var(--text-strong);
+  --color-zinc-200: var(--text-strong);
+  --color-zinc-300: var(--text-secondary);
+  --color-zinc-350: var(--text-secondary);
+  --color-zinc-400: var(--text-secondary);
+  --color-zinc-450: var(--text-muted);
+  --color-zinc-500: var(--text-muted);
+  --color-zinc-600: var(--text-muted);
+  --color-zinc-700: var(--border);
+  --color-zinc-755: var(--border);
+  --color-zinc-800: var(--border);
+  --color-zinc-850: var(--surface-soft);
+  --color-zinc-900: var(--surface);
+  --color-zinc-950: var(--background);
+
+  --color-violet-200: #ffd9a3;
+  --color-violet-300: #ffc46f;
+  --color-violet-400: #ffb454;
+  --color-violet-500: var(--brand);
+  --color-violet-600: var(--brand-strong);
+  --color-violet-700: #c87300;
+  --color-violet-950: var(--brand-soft);
+
+  --color-fuchsia-400: #69ded3;
+  --color-fuchsia-500: var(--listening);
+  --color-fuchsia-600: #22aa9e;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+::selection {
+  background: var(--selection);
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline-color: color-mix(in srgb, var(--brand) 70%, transparent);
+}
+
+.triam-brand-mark {
+  background: linear-gradient(145deg, var(--logo-start) 12%, var(--logo-end) 88%);
+  -webkit-mask: url("/triam-logo.svg") center / contain no-repeat;
+  mask: url("/triam-logo.svg") center / contain no-repeat;
+}
+
+/* `text-white` predates theme support and mostly means high-emphasis text. */
+:root[data-theme="light"] .text-white,
+:root[data-theme="light"] .hover\:text-white:hover,
+:root[data-theme="light"] .group:hover .group-hover\:text-white,
+:root[data-theme="light"] .group\/item:hover .group-hover\/item\:text-white {
+  color: var(--foreground);
+}
+
+/* Filled semantic actions retain their intentional foreground in light mode. */
+:root[data-theme="light"] .bg-violet-600.text-white,
+:root[data-theme="light"] .bg-red-600.text-white,
+:root[data-theme="light"] .from-violet-600 .text-white,
+:root[data-theme="light"] .from-violet-600.text-white {
+  color: #ffffff;
+}
+
+.responsive-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.responsive-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 599px) {
+  .responsive-pagination {
+    flex-wrap: wrap;
+    padding-inline: 16px;
+  }
+
+  .responsive-pagination > :first-child {
+    width: 100%;
+    line-height: 1.6;
+  }
+}
+
+@media (max-width: 1199px) {
+  .responsive-data-table,
+  .responsive-data-table tbody {
+    display: block;
+  }
+
+  .responsive-data-table thead {
+    display: none;
+  }
+
+  .responsive-data-table tbody {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .responsive-data-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
+  }
+
+  .responsive-data-table tbody td {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(88px, 0.42fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 65%, transparent);
+    text-align: left;
+  }
+
+  .responsive-data-table tbody td::before {
+    content: attr(data-label);
+    color: var(--text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    line-height: 1.5;
+    text-transform: uppercase;
+  }
+
+  .responsive-data-table tbody td[data-primary],
+  .responsive-data-table tbody td[data-actions] {
+    grid-column: 1 / -1;
+  }
+
+  .responsive-data-table tbody td[data-primary] {
+    background: color-mix(in srgb, var(--surface-soft) 42%, transparent);
+  }
+
+  .responsive-data-table tbody td[data-actions] > div {
+    justify-content: flex-start;
+  }
+
+  .responsive-data-table .group-hover\:opacity-100 {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 699px) {
+  .responsive-data-table tbody tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .responsive-data-table tbody td {
+    grid-column: 1;
+  }
+
+  .responsive-data-table tbody td[data-primary],
+  .responsive-data-table tbody td[data-actions] {
+    grid-column: 1;
+  }
 }
 

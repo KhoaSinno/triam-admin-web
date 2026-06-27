@@ -255,15 +255,13 @@ function AuditLogsContent() {
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity duration-200 ${isRefetching ? "opacity-50" : "opacity-100"}`}>
-            <table className="w-full text-left border-collapse">
+            <table className="responsive-data-table">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-950/50 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  <th className="px-6 py-4">Thời gian</th>
-                  <th className="px-6 py-4">Tài khoản Admin</th>
-                  <th className="px-6 py-4">Thao tác (Action)</th>
+                  <th className="px-6 py-4">Thời gian / Admin</th>
+                  <th className="px-6 py-4">Sự kiện</th>
                   <th className="px-6 py-4">Đối tượng</th>
-                  <th className="px-6 py-4">Mã đối tượng (Target ID)</th>
-                  <th className="px-6 py-4">Thông tin bổ sung</th>
+                  <th className="px-6 py-4">Chi tiết</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-850 text-xs">
@@ -273,16 +271,13 @@ function AuditLogsContent() {
                     className="hover:bg-zinc-800/15 transition-colors group"
                   >
                     {/* Timestamp column */}
-                    <td className="px-6 py-4 text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
+                    <td data-label="Thời gian" data-primary className="px-6 py-4 text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
                         <span>{formatDate(log.created_at)}</span>
                       </div>
-                    </td>
-
-                    {/* Admin User ID column */}
-                    <td className="px-6 py-4 font-mono text-zinc-400">
-                      <div className="flex items-center gap-1.5">
+                      <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-500">
+                        <span>Admin:</span>
                         <span title={log.admin_user_id}>{truncateId(log.admin_user_id)}</span>
                         <button
                           onClick={() => handleCopy(log.admin_user_id, "Admin User ID")}
@@ -294,7 +289,7 @@ function AuditLogsContent() {
                     </td>
 
                     {/* Action column */}
-                    <td className="px-6 py-4">
+                    <td data-label="Thao tác" className="px-6 py-4">
                       <span
                         className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-bold ${
                           log.action.includes("failed")
@@ -306,14 +301,9 @@ function AuditLogsContent() {
                       </span>
                     </td>
 
-                    {/* Target Type column */}
-                    <td className="px-6 py-4 capitalize font-semibold text-zinc-350">
-                      {log.target_type || "—"}
-                    </td>
-
-                    {/* Target ID column */}
-                    <td className="px-6 py-4 font-mono text-zinc-450">
-                      {log.target_id ? (
+                    <td data-label="Đối tượng" className="px-6 py-4 text-zinc-450">
+                      <p className="capitalize font-semibold text-zinc-350">{log.target_type || "Không xác định"}</p>
+                      {log.target_id && (
                         <div className="flex items-center gap-1.5">
                           <span title={log.target_id}>{truncateId(log.target_id)}</span>
                           <button
@@ -323,13 +313,11 @@ function AuditLogsContent() {
                             <Copy className="h-2.5 w-2.5" />
                           </button>
                         </div>
-                      ) : (
-                        "—"
                       )}
                     </td>
 
                     {/* Metadata JSON collapsible view */}
-                    <td className="px-6 py-4">
+                    <td data-label="Thông tin bổ sung" data-actions className="px-6 py-4">
                       <CollapsibleJson json={log.metadata} />
                     </td>
                   </tr>
@@ -341,7 +329,7 @@ function AuditLogsContent() {
 
         {/* Footer Pagination */}
         {!isLoading && !isError && total > 0 && (
-          <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
+          <div className="responsive-pagination border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}
               <span className="text-zinc-200 font-bold">{endNum}</span> trên tổng số{" "}

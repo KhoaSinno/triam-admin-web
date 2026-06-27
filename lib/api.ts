@@ -50,6 +50,11 @@ export type AdminDashboardResponse = {
 
 export type AdminUserListItem = {
   user_id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  account_created_at: string | null;
+  last_sign_in_at: string | null;
   book_count: number;
   job_count: number;
   notification_count: number;
@@ -123,8 +128,12 @@ export type AdminBooksResponse = PaginatedResponse<AdminBookListItem>;
 export type AdminJobsResponse = PaginatedResponse<AdminJobListItem>;
 export type AdminAuditLogsResponse = PaginatedResponse<AdminAuditLogItem>;
 
-export async function adminFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getClientToken();
+export async function adminFetch<T>(
+  path: string,
+  init?: RequestInit,
+  tokenOverride?: string,
+): Promise<T> {
+  const token = tokenOverride || getClientToken();
 
   if (!token) {
     throw new Error("NO_SESSION");

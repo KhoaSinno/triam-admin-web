@@ -294,16 +294,13 @@ function BooksContent() {
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity duration-200 ${isRefetching ? "opacity-50" : "opacity-100"}`}>
-            <table className="w-full text-left border-collapse">
+            <table className="responsive-data-table">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-950/50 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  <th className="px-6 py-4">Tên Sách / Tác giả</th>
-                  <th className="px-6 py-4">User ID</th>
-                  <th className="px-6 py-4">Định dạng</th>
-                  <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4 text-center">Số chương</th>
-                  <th className="px-6 py-4 text-center">Số Units</th>
-                  <th className="px-6 py-4">Cập nhật lúc</th>
+                  <th className="px-6 py-4">Sách</th>
+                  <th className="px-6 py-4">Chủ sở hữu</th>
+                  <th className="px-6 py-4">Xử lý nội dung</th>
+                  <th className="px-6 py-4">Cập nhật</th>
                   <th className="px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -314,7 +311,7 @@ function BooksContent() {
                     className="hover:bg-zinc-800/20 transition-colors group"
                   >
                     {/* Title and Author */}
-                    <td className="px-6 py-4">
+                    <td data-label="Sách" data-primary className="px-6 py-4">
                       <div className="flex flex-col max-w-xs md:max-w-sm">
                         <span
                           onClick={() => router.push(`/books/${book.id}`)}
@@ -326,11 +323,15 @@ function BooksContent() {
                         <span className="text-xs text-zinc-450 truncate">
                           {book.author || "Không rõ tác giả"}
                         </span>
+                        <span className="mt-1 inline-flex w-max items-center gap-1 rounded-full bg-zinc-800/45 px-2 py-0.5 text-[10px] font-bold text-zinc-500">
+                          <FileCode className="h-3 w-3" />
+                          {book.document_type?.toUpperCase() || "Không rõ định dạng"}
+                        </span>
                       </div>
                     </td>
 
                     {/* User ID with copy button */}
-                    <td className="px-6 py-4 font-mono text-xs text-zinc-400">
+                    <td data-label="Người dùng" className="px-6 py-4 font-mono text-xs text-zinc-400">
                       <div className="flex items-center gap-1.5">
                         <span title={book.user_id}>{truncateId(book.user_id)}</span>
                         <button
@@ -342,18 +343,12 @@ function BooksContent() {
                       </div>
                     </td>
 
-                    {/* File format */}
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center gap-1 rounded bg-zinc-950 px-2 py-0.5 text-xs font-semibold text-zinc-400 border border-zinc-850">
-                        <FileCode className="h-3 w-3 text-zinc-550 shrink-0" />
-                        {book.document_type?.toUpperCase() || "N/A"}
-                      </span>
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="px-6 py-4">
+                    <td data-label="Xử lý nội dung" className="px-6 py-4">
                       <div className="flex flex-col gap-1 items-start">
                         {getStatusBadge(book.status)}
+                        <span className="text-[10px] font-semibold text-zinc-500">
+                          {book.total_sections ?? "—"} đề mục · {book.total_units ?? "—"} bài học
+                        </span>
                         {book.status === "error" && book.error_message && (
                           <span
                             className="text-[10px] text-red-400 max-w-xs truncate"
@@ -365,18 +360,8 @@ function BooksContent() {
                       </div>
                     </td>
 
-                    {/* Total Sections */}
-                    <td className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
-                      {book.total_sections !== null ? book.total_sections : "—"}
-                    </td>
-
-                    {/* Total Units */}
-                    <td className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
-                      {book.total_units !== null ? book.total_units : "—"}
-                    </td>
-
                     {/* Updated At */}
-                    <td className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
+                    <td data-label="Cập nhật" className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
                         <span>{formatDate(book.updated_at)}</span>
@@ -384,7 +369,7 @@ function BooksContent() {
                     </td>
 
                     {/* Row Actions */}
-                    <td className="px-6 py-4 text-right">
+                    <td data-label="Thao tác" data-actions className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {book.status === "error" && (
                           <button
@@ -413,7 +398,7 @@ function BooksContent() {
 
         {/* Footer Pagination */}
         {!isLoading && !isError && total > 0 && (
-          <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
+          <div className="responsive-pagination border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}
               <span className="text-zinc-200 font-bold">{endNum}</span> trên tổng số{" "}

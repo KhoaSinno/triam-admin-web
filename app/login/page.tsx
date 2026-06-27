@@ -7,6 +7,8 @@ import { useAuth } from "@/context/auth-context";
 import { getErrorMessage } from "@/lib/api";
 import { KeyRound, Mail, LogIn, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import ThemeToggle from "@/components/theme-toggle";
+import BrandLogo from "@/components/brand-logo";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,7 +16,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
-  const { user, profile, loading: authLoading, isForbidden } = useAuth();
+  const { user, profile, loading: authLoading, isForbidden, loginWithPassword } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -33,17 +35,8 @@ export default function LoginPage() {
     setErrorMsg(null);
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        setErrorMsg(error.message);
-        toast.error("Đăng nhập thất bại: " + error.message);
-      } else {
-        toast.success("Đăng nhập thành công!");
-      }
+      await loginWithPassword(email, password);
+      toast.success("Đăng nhập thành công!");
     } catch (err: unknown) {
       const message = getErrorMessage(err, "Đã xảy ra lỗi kết nối.");
       setErrorMsg(message);
@@ -90,15 +83,14 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950 px-4">
+      <ThemeToggle className="absolute right-5 top-5 z-20" />
       {/* Decorative premium glow backgrounds */}
       <div className="absolute top-1/4 left-1/4 -z-10 h-96 w-96 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-600/10 blur-[128px]"></div>
       <div className="absolute bottom-1/4 right-1/4 -z-10 h-[400px] w-[400px] translate-x-1/2 translate-y-1/2 rounded-full bg-fuchsia-600/10 blur-[128px]"></div>
 
       <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-8 shadow-2xl backdrop-blur-xl">
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-tr from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-500/20">
-            <LogIn className="h-6 w-6 text-white" />
-          </div>
+          <BrandLogo className="mb-3 h-16 w-16 drop-shadow-sm" />
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl bg-gradient-to-r from-zinc-50 via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
             Tri Âm Admin
           </h1>

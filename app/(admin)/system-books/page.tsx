@@ -573,7 +573,7 @@ function SystemBooksContent() {
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity duration-200 ${isRefetching ? "opacity-50" : "opacity-100"}`}>
-            <table className="w-full text-left border-collapse">
+            <table className="responsive-data-table">
               <thead>
                 <tr className="border-b border-zinc-850 bg-zinc-950/40 text-[11px] font-bold uppercase tracking-wider text-zinc-450">
                   <th className="px-6 py-4">Tên Sách / Tác giả</th>
@@ -591,7 +591,7 @@ function SystemBooksContent() {
                 {items.map((book) => (
                   <tr key={book.id} className="hover:bg-zinc-850/10 transition-colors group">
                     {/* Title */}
-                    <td className="px-6 py-4">
+                    <td data-label="Sách hệ thống" data-primary className="px-6 py-4">
                       <div className="flex flex-col max-w-xs md:max-w-sm">
                         <span
                           onClick={() => router.push(`/books/${book.id}`)}
@@ -607,7 +607,7 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Book ID */}
-                    <td className="px-6 py-4 font-mono text-xs text-zinc-450">
+                    <td data-label="Book ID" className="px-6 py-4 font-mono text-xs text-zinc-450">
                       <div className="flex items-center gap-1.5">
                         <span title={book.id}>{truncateId(book.id)}</span>
                         <button
@@ -620,7 +620,7 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Processing status */}
-                    <td className="px-6 py-4">
+                    <td data-label="Trạng thái" className="px-6 py-4">
                       <div className="flex flex-col gap-1 items-start">
                         {getStatusBadge(book.status)}
                         {book.status === "error" && book.error_message && (
@@ -632,7 +632,7 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Shared Status */}
-                    <td className="px-6 py-4">
+                    <td data-label="Thư viện chung" className="px-6 py-4">
                       <div className="flex flex-col gap-1.5 items-start">
                         {getSharedBadge(book.is_shared)}
                         <div className="flex flex-wrap gap-1">
@@ -656,7 +656,7 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Document Type */}
-                    <td className="px-6 py-4 text-center">
+                    <td data-label="Định dạng" className="px-6 py-4 text-center">
                       <span className="inline-flex items-center gap-1 rounded bg-zinc-950 px-2 py-0.5 text-xs font-semibold text-zinc-400 border border-zinc-850">
                         <FileCode className="h-3.5 w-3.5 text-zinc-655 shrink-0" />
                         {book.document_type?.toUpperCase()}
@@ -664,17 +664,17 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Total Sections */}
-                    <td className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
+                    <td data-label="Số chương" className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
                       {book.total_sections !== null ? book.total_sections : "—"}
                     </td>
 
                     {/* Total Units */}
-                    <td className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
+                    <td data-label="Số units" className="px-6 py-4 text-center font-mono text-xs text-zinc-300 font-bold">
                       {book.total_units !== null ? book.total_units : "—"}
                     </td>
 
                     {/* Updated At */}
-                    <td className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
+                    <td data-label="Cập nhật" className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-700 shrink-0" />
                         <span>{formatDate(book.updated_at)}</span>
@@ -682,7 +682,7 @@ function SystemBooksContent() {
                     </td>
 
                     {/* Actions */}
-                    <td className="px-6 py-4 text-right">
+                    <td data-label="Thao tác" data-actions className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {/* Trigger Processing Button */}
                         {book.status !== "processing" && (
@@ -756,7 +756,7 @@ function SystemBooksContent() {
 
         {/* Footer Pagination */}
         {!isLoading && !isError && total > 0 && activeTab !== "shared" && (
-          <div className="flex items-center justify-between border-t border-zinc-850 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-455 select-none">
+          <div className="responsive-pagination border-t border-zinc-850 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-455 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}
               <span className="text-zinc-200 font-bold">{endNum}</span> trên tổng số{" "}

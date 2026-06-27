@@ -73,6 +73,12 @@ export default function UsersPage() {
     return `${id.slice(0, 8)}...${id.slice(-4)}`;
   };
 
+  const getInitials = (name: string) => {
+    const parts = name.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "?";
+    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
+  };
+
   const items = usersData?.items || [];
   const total = usersData?.total || 0;
 
@@ -139,14 +145,13 @@ export default function UsersPage() {
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity duration-200 ${isRefetching ? "opacity-50" : "opacity-100"}`}>
-            <table className="w-full text-left border-collapse">
+            <table className="responsive-data-table">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-950/50 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  <th className="px-6 py-4">User ID</th>
-                  <th className="px-6 py-4 text-center">Sách đã tạo</th>
-                  <th className="px-6 py-4 text-center">Số lượng Jobs</th>
-                  <th className="px-6 py-4 text-center">Thông báo</th>
-                  <th className="px-6 py-4">Hoạt động cuối</th>
+                  <th className="px-6 py-4">Người dùng</th>
+                  <th className="px-6 py-4">Tài nguyên</th>
+                  <th className="px-6 py-4">Hoạt động gần nhất</th>
+                  <th className="px-6 py-4">Đăng nhập gần nhất</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-850">
@@ -155,58 +160,74 @@ export default function UsersPage() {
                     key={userItem.user_id}
                     className="hover:bg-zinc-800/25 transition-colors group"
                   >
-                    {/* User ID column with Copy action */}
-                    <td className="px-6 py-4 font-mono text-xs text-zinc-300">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-zinc-200" title={userItem.user_id}>
-                          {truncateId(userItem.user_id)}
-                        </span>
-                        <button
-                          onClick={() => handleCopy(userItem.user_id)}
-                          className="rounded p-1 text-zinc-500 hover:bg-zinc-850 hover:text-zinc-200 transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
-                          title="Sao chép full ID"
+                    <td data-label="Người dùng" data-primary className="px-6 py-4">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/25 to-fuchsia-500/20 text-xs font-extrabold text-violet-500 ring-1 ring-violet-500/20 bg-cover bg-center"
+                          style={userItem.avatar_url ? { backgroundImage: `url("${userItem.avatar_url}")` } : undefined}
+                          aria-hidden="true"
                         >
-                          <Copy className="h-3 w-3" />
-                        </button>
+                          {!userItem.avatar_url &&
+                            getInitials(userItem.display_name || userItem.email || userItem.user_id)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-extrabold text-zinc-200">
+                            {userItem.display_name || userItem.email || "Người dùng chưa có hồ sơ"}
+                          </p>
+                          {userItem.display_name && userItem.email && (
+                            <p className="truncate text-xs text-zinc-400">{userItem.email}</p>
+                          )}
+                          <div className="mt-1 flex items-center gap-1 font-mono text-[10px] text-zinc-500">
+                            <span title={userItem.user_id}>{truncateId(userItem.user_id)}</span>
+                            <button
+                              onClick={() => handleCopy(userItem.user_id)}
+                              className="rounded p-1 text-zinc-500 transition hover:bg-zinc-850 hover:text-zinc-200"
+                              title="Sao chép User ID"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </td>
 
-                    {/* Book count column linking to books filtered by user_id */}
-                    <td className="px-6 py-4 text-center">
-                      <button
-                        onClick={() => router.push(`/books?user_id=${userItem.user_id}`)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800/40 hover:bg-violet-500/10 border border-zinc-800 hover:border-violet-500/20 text-zinc-300 hover:text-violet-400 px-3 py-1 text-xs font-semibold transition-all font-mono"
-                      >
-                        <BookOpen className="h-3 w-3 shrink-0" />
-                        {userItem.book_count}
-                      </button>
+                    <td data-label="Tài nguyên" className="px-6 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => router.push(`/books?user_id=${userItem.user_id}`)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-violet-500/10 px-2.5 py-1 text-xs font-bold text-violet-500 transition hover:bg-violet-500/18"
+                        >
+                          <BookOpen className="h-3.5 w-3.5" />
+                          {userItem.book_count} sách
+                        </button>
+                        <button
+                          onClick={() => router.push(`/jobs?user_id=${userItem.user_id}`)}
+                          className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-bold text-blue-500 transition hover:bg-blue-500/18"
+                        >
+                          <Cpu className="h-3.5 w-3.5" />
+                          {userItem.job_count} jobs
+                        </button>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800/45 px-2.5 py-1 text-xs font-bold text-zinc-400">
+                          <Bell className="h-3.5 w-3.5" />
+                          {userItem.notification_count} thông báo
+                        </span>
+                      </div>
                     </td>
 
-                    {/* Job count column linking to jobs filtered by user_id */}
-                    <td className="px-6 py-4 text-center font-mono">
-                      <button
-                        onClick={() => router.push(`/jobs?user_id=${userItem.user_id}`)}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-800/40 hover:bg-violet-500/10 border border-zinc-800 hover:border-violet-500/20 text-zinc-300 hover:text-violet-400 px-3 py-1 text-xs font-semibold transition-all font-mono"
-                      >
-                        <Cpu className="h-3 w-3 shrink-0" />
-                        {userItem.job_count}
-                      </button>
-                    </td>
-
-                    {/* Notifications count */}
-                    <td className="px-6 py-4 text-center font-mono">
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 border border-zinc-850 text-zinc-400 px-3 py-1 text-xs font-semibold">
-                        <Bell className="h-3 w-3 shrink-0 text-zinc-500" />
-                        {userItem.notification_count}
-                      </span>
-                    </td>
-
-                    {/* Last active activity date */}
-                    <td className="px-6 py-4 text-xs font-semibold text-zinc-400 font-variant-numeric: tabular-nums">
+                    <td data-label="Hoạt động cuối" className="px-6 py-4 text-xs font-semibold text-zinc-400 font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-2">
                         <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
                         <span>{formatDate(userItem.last_activity_at)}</span>
                       </div>
+                    </td>
+
+                    <td data-label="Đăng nhập gần nhất" className="px-6 py-4 text-xs text-zinc-400">
+                      <p className="font-semibold">{formatDate(userItem.last_sign_in_at)}</p>
+                      {userItem.account_created_at && (
+                        <p className="mt-1 text-[10px] text-zinc-500">
+                          Tham gia {formatDate(userItem.account_created_at)}
+                        </p>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -217,7 +238,7 @@ export default function UsersPage() {
 
         {/* Footer Pagination */}
         {!isLoading && !isError && total > 0 && (
-          <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
+          <div className="responsive-pagination border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}
               <span className="text-zinc-200 font-bold">{endNum}</span> trên tổng số{" "}

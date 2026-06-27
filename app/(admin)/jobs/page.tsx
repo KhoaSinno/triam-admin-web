@@ -326,17 +326,14 @@ function JobsContent() {
           </div>
         ) : (
           <div className={`overflow-x-auto transition-opacity duration-200 ${isRefetching ? "opacity-50" : "opacity-100"}`}>
-            <table className="w-full text-left border-collapse">
+            <table className="responsive-data-table">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-950/50 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  <th className="px-6 py-4">Job ID / Type</th>
+                  <th className="px-6 py-4">Job</th>
                   <th className="px-6 py-4">Trạng thái</th>
-                  <th className="px-6 py-4 text-center">Chế độ</th>
                   <th className="px-6 py-4 max-w-xs">Tiến độ</th>
-                  <th className="px-6 py-4 text-center">Đã hoàn thành</th>
-                  <th className="px-6 py-4">Book ID</th>
-                  <th className="px-6 py-4">User ID</th>
-                  <th className="px-6 py-4">Ngày cập nhật</th>
+                  <th className="px-6 py-4">Ngữ cảnh</th>
+                  <th className="px-6 py-4">Cập nhật</th>
                   <th className="px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -352,7 +349,7 @@ function JobsContent() {
                       className="hover:bg-zinc-800/20 transition-colors group text-xs"
                     >
                       {/* Job ID / Type */}
-                      <td className="px-6 py-4">
+                      <td data-label="Job" data-primary className="px-6 py-4">
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-1.5 font-mono text-zinc-200">
                             <span className="font-semibold">{truncateId(job.id)}</span>
@@ -366,19 +363,19 @@ function JobsContent() {
                           <span className="text-[10px] font-bold text-zinc-450 uppercase tracking-wide">
                             {job.job_type}
                           </span>
+                          {job.mode && (
+                            <span className="text-[10px] font-bold text-violet-500">
+                              Chế độ {job.mode === "pareto" ? "Tinh gọn" : "Đầy đủ"}
+                            </span>
+                          )}
                         </div>
                       </td>
 
                       {/* Status */}
-                      <td className="px-6 py-4">{getStatusBadge(job.status)}</td>
-
-                      {/* Mode */}
-                      <td className="px-6 py-4 text-center capitalize font-semibold text-zinc-350">
-                        {job.mode || "—"}
-                      </td>
+                      <td data-label="Trạng thái" className="px-6 py-4">{getStatusBadge(job.status)}</td>
 
                       {/* Progress Bar & Current Step */}
-                      <td className="px-6 py-4 max-w-xs">
+                      <td data-label="Tiến độ" className="px-6 py-4 max-w-xs">
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between text-[10px] text-zinc-400">
                             <span className="font-mono font-bold">{job.progress_percent}%</span>
@@ -388,6 +385,9 @@ function JobsContent() {
                               </span>
                             )}
                           </div>
+                          <span className="text-[10px] font-semibold text-zinc-500">
+                            {job.done_units}/{job.total_units} units hoàn thành
+                          </span>
                           <div className="h-1.5 w-32 rounded-full bg-zinc-950 overflow-hidden border border-zinc-850">
                             <div
                               className={`h-full rounded-full transition-all duration-300 ${
@@ -413,45 +413,33 @@ function JobsContent() {
                         </div>
                       </td>
 
-                      {/* Units count done / total */}
-                      <td className="px-6 py-4 text-center font-mono font-semibold text-zinc-300">
-                        {job.done_units} / {job.total_units}
-                      </td>
-
-                      {/* Book ID Link */}
-                      <td className="px-6 py-4 font-mono text-zinc-450">
-                        {job.book_id ? (
-                          <div className="flex items-center gap-1">
+                      <td data-label="Ngữ cảnh" className="px-6 py-4 font-mono text-zinc-450">
+                        <div className="flex flex-col gap-1.5">
+                          {job.book_id ? (
                             <span
                               onClick={() => router.push(`/books/${job.book_id}`)}
                               className="text-zinc-300 hover:text-violet-400 transition-colors cursor-pointer font-bold"
                               title="Xem chi tiết sách"
                             >
-                              {truncateId(job.book_id)}
+                              Sách: {truncateId(job.book_id)}
                             </span>
-                          </div>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-
-                      {/* User ID Link */}
-                      <td className="px-6 py-4 font-mono text-zinc-450">
-                        {job.user_id ? (
+                          ) : (
+                            <span>Không gắn với sách</span>
+                          )}
+                          {job.user_id && (
                           <span
                             onClick={() => router.push(`/books?user_id=${job.user_id}`)}
                             className="text-zinc-300 hover:text-violet-400 transition-colors cursor-pointer"
                             title="Lọc sách theo user này"
                           >
-                            {truncateId(job.user_id)}
+                            User: {truncateId(job.user_id)}
                           </span>
-                        ) : (
-                          "—"
-                        )}
+                          )}
+                        </div>
                       </td>
 
                       {/* Updated Date */}
-                      <td className="px-6 py-4 text-zinc-405 font-semibold font-variant-numeric: tabular-nums">
+                      <td data-label="Cập nhật" className="px-6 py-4 text-zinc-405 font-semibold font-variant-numeric: tabular-nums">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
                           <span>{formatDate(job.updated_at)}</span>
@@ -459,7 +447,7 @@ function JobsContent() {
                       </td>
 
                       {/* Row actions */}
-                      <td className="px-6 py-4 text-right">
+                      <td data-label="Thao tác" data-actions className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {job.book_id && (
                             <button
@@ -490,7 +478,7 @@ function JobsContent() {
 
         {/* Footer Pagination */}
         {!isLoading && !isError && total > 0 && (
-          <div className="flex items-center justify-between border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
+          <div className="responsive-pagination border-t border-zinc-800 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-400 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}
               <span className="text-zinc-200 font-bold">{endNum}</span> trên tổng số{" "}

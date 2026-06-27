@@ -28,10 +28,6 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      // Disable navigator.locks to prevent tab-focus hangs in browsers
-      lock: async (name, acquireTimeout, fn) => {
-        return await fn();
-      },
     },
   }
 );

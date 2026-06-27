@@ -11,10 +11,13 @@ import {
   Cpu,
   FileText,
   LogOut,
-  Terminal,
+  RefreshCcw,
+  TriangleAlert,
   LibraryBig,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import ThemeToggle from "@/components/theme-toggle";
+import BrandLogo from "@/components/brand-logo";
 import {
   adminFetch,
   AdminDashboardResponse,
@@ -29,7 +32,7 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, profile, loading, logout, isForbidden } = useAuth();
+  const { user, profile, loading, logout, isForbidden, error, checkAdminStatus } = useAuth();
   const pathname = usePathname();
   const queryClient = useQueryClient();
 
@@ -69,6 +72,44 @@ export default function AdminLayout({
     }
   };
 
+  if (!loading && user && !profile && !isForbidden && error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-950 px-4">
+        <div className="w-full max-w-md rounded-xl border border-red-500/20 bg-zinc-900/70 p-6 shadow-2xl">
+          <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-red-500/10 text-red-300">
+            <TriangleAlert className="h-5 w-5" />
+          </div>
+          <h1 className="text-lg font-bold text-white">Không kiểm tra được quyền admin</h1>
+          <p className="mt-2 text-sm leading-6 text-zinc-400">
+            Phiên Supabase vẫn còn trong trình duyệt, nhưng API admin không phản hồi hoặc không thể
+            xác thực `/me`.
+          </p>
+          <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-red-200">
+            {error}
+          </p>
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={checkAdminStatus}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Thử lại
+            </button>
+            <button
+              type="button"
+              onClick={logout}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-900"
+            >
+              <LogOut className="h-4 w-4" />
+              Đăng xuất
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // If loading or not authorized yet, show full screen loader to avoid content flashes
   if (loading || !user || !profile || isForbidden) {
     return (
@@ -106,12 +147,10 @@ export default function AdminLayout({
   return (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-50">
       {/* Sidebar Desktop */}
-      <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col border-r border-zinc-800 bg-zinc-900/30 backdrop-blur-xl">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-zinc-800 bg-zinc-900/30 backdrop-blur-xl lg:flex">
         <div className="flex h-16 items-center justify-between border-b border-zinc-800 px-6">
           <Link href="/dashboard" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-tr from-violet-600 to-fuchsia-600 shadow-md shadow-violet-500/10">
-              <Terminal className="h-4.5 w-4.5 text-white" />
-            </div>
+            <BrandLogo className="h-8 w-8" />
             <span className="font-bold tracking-tight text-white bg-gradient-to-r from-zinc-50 via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
               Tri Âm Admin
             </span>
@@ -167,13 +206,19 @@ export default function AdminLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex flex-1 flex-col pl-64">
+      <div className="flex min-w-0 flex-1 flex-col lg:pl-64">
         {/* Header */}
-        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-zinc-800 bg-zinc-950/70 px-8 backdrop-blur-md">
+        <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-zinc-800 bg-zinc-950/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           {/* Environment Status Badge */}
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden">
+              <BrandLogo className="h-8 w-8" />
+              <span className="hidden text-sm font-extrabold text-zinc-100 sm:inline">
+                Tri Âm Admin
+              </span>
+            </Link>
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              className={`hidden items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold sm:inline-flex ${
                 env === "Production"
                   ? "bg-red-500/10 text-red-400 border border-red-500/20"
                   : env === "Staging"
@@ -195,18 +240,43 @@ export default function AdminLayout({
           </div>
 
           <div className="flex items-center gap-4">
+            <ThemeToggle />
             <button
               onClick={logout}
-              className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 py-2 px-4 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
+              className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 sm:px-4"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Đăng xuất
+              <span className="hidden sm:inline">Đăng xuất</span>
             </button>
           </div>
         </header>
 
+        <nav className="sticky top-16 z-[9] flex gap-1 overflow-x-auto border-b border-zinc-800 bg-zinc-950/92 px-3 py-2 backdrop-blur-md lg:hidden">
+          {menuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              pathname === item.href || pathname.startsWith(item.href + "/");
+
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onMouseEnter={() => prefetchMenuItem(item.href)}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-bold transition ${
+                  isActive
+                    ? "bg-violet-500/12 text-violet-500"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                }`}
+              >
+                <Icon className="h-4 w-4" />
+                {item.name}
+              </Link>
+            );
+          })}
+        </nav>
+
         {/* Page Content */}
-        <main className="flex-1 px-8 py-8">{children}</main>
+        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">{children}</main>
       </div>
     </div>
   );

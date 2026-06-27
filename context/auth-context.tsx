@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { User } from "@supabase/supabase-js";
+import { Session, User } from "@supabase/supabase-js";
 import { supabase, setClientToken } from "@/lib/supabase";
 import { adminFetch, AdminMeResponse, getErrorMessage } from "@/lib/api";
 
@@ -14,6 +14,7 @@ type AuthContextType = {
   isForbidden: boolean;
   logout: () => Promise<void>;
   checkAdminStatus: () => Promise<void>;
+  loginWithPassword: (email: string, password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,22 +27,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isForbidden, setIsForbidden] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
-
-  // Keep track of current user and profile values to avoid stale closure in useEffect
   const stateRef = useRef({ user, profile });
+  const mountedRef = useRef(true);
+  const validationRef = useRef<{ token: string; promise: Promise<void> } | null>(null);
 
   useEffect(() => {
     stateRef.current = { user, profile };
   }, [user, profile]);
 
+  const clearAuthState = useCallback(() => {
+    setClientToken(null);
+    setUser(null);
+    setProfile(null);
+    setIsForbidden(false);
+  }, []);
+
   const logout = async () => {
     setLoading(true);
     try {
       await supabase.auth.signOut();
-      setClientToken(null);
-      setUser(null);
-      setProfile(null);
-      setIsForbidden(false);
+      clearAuthState();
       setError(null);
       router.push("/login");
     } catch (err: unknown) {
@@ -51,112 +56,134 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const checkAdminStatus = async () => {
-    try {
+  const validateSession = useCallback((session: Session, showLoader: boolean) => {
+    const existing = validationRef.current;
+    if (existing?.token === session.access_token) {
+      return existing.promise;
+    }
+
+    const promise = (async () => {
+      if (showLoader) setLoading(true);
+      setClientToken(session.access_token);
+      setUser(session.user);
       setError(null);
-      const data = await adminFetch<AdminMeResponse>("/me");
-      setProfile(data);
-      setIsForbidden(false);
-    } catch (err: unknown) {
-      const message = getErrorMessage(err);
-      console.error("Failed /me check:", message);
-      if (message === "ADMIN_FORBIDDEN" || message === "Admin permission required.") {
-        setIsForbidden(true);
-        setProfile(null);
-      } else if (message === "UNAUTHORIZED" || message === "NO_SESSION") {
+
+      try {
+        let activeSession = session;
+        let data: AdminMeResponse;
+
+        try {
+          data = await adminFetch<AdminMeResponse>("/me", undefined, activeSession.access_token);
+        } catch (firstError) {
+          if (getErrorMessage(firstError) !== "UNAUTHORIZED") throw firstError;
+
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError || !refreshed.session) throw firstError;
+
+          activeSession = refreshed.session;
+          setClientToken(activeSession.access_token);
+          setUser(activeSession.user);
+          data = await adminFetch<AdminMeResponse>("/me", undefined, activeSession.access_token);
+        }
+
+        if (!mountedRef.current) return;
+        setProfile(data);
         setIsForbidden(false);
-        setProfile(null);
-        await supabase.auth.signOut();
-      } else {
-        setError(message || "An error occurred checking permissions.");
-      }
-    }
-  };
+      } catch (err: unknown) {
+        if (!mountedRef.current) return;
+        const message = getErrorMessage(err);
 
-  useEffect(() => {
-    let mounted = true;
-    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const isAuthCallback = typeof window !== "undefined" && (
-      window.location.hash.includes("access_token=") ||
-      window.location.hash.includes("id_token=") ||
-      window.location.hash.includes("error=") ||
-      window.location.hash.includes("recovery_token=") ||
-      window.location.search.includes("code=")
-    );
-
-    if (isAuthCallback) {
-      // Set a fallback timer in case the auth callback parsing fails or hangs
-      fallbackTimer = setTimeout(() => {
-        if (mounted) {
-          console.warn("Auth callback fallback timeout reached. Forcing loading state to false.");
-          setLoading(false);
-        }
-      }, 5000);
-    }
-
-    // Check current session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted) return;
-
-      if (session) {
-        if (fallbackTimer) clearTimeout(fallbackTimer);
-        setClientToken(session.access_token);
-        setUser(session.user);
-        await checkAdminStatus();
-        setLoading(false);
-      } else {
-        // If there's an auth callback, don't set loading to false yet; let onAuthStateChange handle it.
-        if (!isAuthCallback) {
-          setClientToken(null);
-          setUser(null);
+        if (message === "ADMIN_FORBIDDEN" || message === "Admin permission required.") {
+          setIsForbidden(true);
           setProfile(null);
-          setIsForbidden(false);
-          setLoading(false);
+        } else if (message === "UNAUTHORIZED" || message === "NO_SESSION") {
+          clearAuthState();
+          await supabase.auth.signOut({ scope: "local" });
+        } else {
+          setError(message || "Không thể kiểm tra quyền quản trị.");
         }
+      } finally {
+        if (mountedRef.current) setLoading(false);
+      }
+    })();
+
+    validationRef.current = { token: session.access_token, promise };
+    void promise.finally(() => {
+      if (validationRef.current?.promise === promise) {
+        validationRef.current = null;
       }
     });
+    return promise;
+  }, [clearAuthState]);
 
-    // Listen for auth changes
+  const checkAdminStatus = useCallback(async () => {
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !data.session) {
+      clearAuthState();
+      setLoading(false);
+      return;
+    }
+    await validateSession(data.session, false);
+  }, [clearAuthState, validateSession]);
+
+  const loginWithPassword = useCallback(async (email: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    const { data, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError) {
+      setLoading(false);
+      throw signInError;
+    }
+    if (!data.session) {
+      setLoading(false);
+      throw new Error("NO_SESSION");
+    }
+
+    await validateSession(data.session, true);
+  }, [validateSession]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const fallbackTimer = window.setTimeout(() => {
+      if (mountedRef.current && !stateRef.current.user) setLoading(false);
+    }, 6000);
+
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mountedRef.current) return;
 
       if (session) {
-        if (fallbackTimer) clearTimeout(fallbackTimer);
+        window.clearTimeout(fallbackTimer);
         setClientToken(session.access_token);
         setUser(session.user);
-        
-        // Only trigger full-screen loading spinner if we don't already have an active admin session.
-        // For background token refreshes, perform a silent validation.
-        const hasCurrentUser = !!stateRef.current.user;
-        const hasProfile = !!stateRef.current.profile;
-        if (!hasCurrentUser || !hasProfile) {
-          setLoading(true);
-        }
-        
-        await checkAdminStatus();
-        setLoading(false);
-      } else {
-        // If we are currently processing a callback, don't immediately set loading to false.
-        // Let the fallback timer handle the failure, or wait for SIGNED_IN.
-        if (!isAuthCallback || event === "SIGNED_OUT") {
-          setClientToken(null);
-          setUser(null);
-          setProfile(null);
-          setIsForbidden(false);
+
+        if (event === "TOKEN_REFRESHED" && stateRef.current.profile) {
           setLoading(false);
+          return;
         }
+
+        window.setTimeout(() => {
+          if (mountedRef.current) {
+            void validateSession(session, !stateRef.current.profile);
+          }
+        }, 0);
+      } else {
+        clearAuthState();
+        setLoading(false);
       }
     });
 
     return () => {
-      mounted = false;
-      if (fallbackTimer) clearTimeout(fallbackTimer);
+      mountedRef.current = false;
+      window.clearTimeout(fallbackTimer);
       subscription.unsubscribe();
     };
-  }, []);
+  }, [clearAuthState, validateSession]);
 
   // Route Guard Logic
   useEffect(() => {
@@ -193,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isForbidden,
         logout,
         checkAdminStatus,
+        loginWithPassword,
       }}
     >
       {children}

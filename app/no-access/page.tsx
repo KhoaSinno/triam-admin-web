@@ -4,12 +4,14 @@ import React from "react";
 import { useAuth } from "@/context/auth-context";
 import { ShieldAlert, LogOut, ArrowLeft } from "lucide-react";
 import Link from "next/link";
+import ThemeToggle from "@/components/theme-toggle";
 
 export default function NoAccessPage() {
   const { logout } = useAuth();
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-zinc-950 px-4">
+      <ThemeToggle className="absolute right-5 top-5 z-20" />
       {/* Glow effect */}
       <div className="absolute top-1/2 left-1/2 -z-10 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-600/5 blur-[128px]"></div>
 

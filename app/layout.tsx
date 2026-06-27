@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { Toaster } from "sonner";
+import { Be_Vietnam_Pro, Geist_Mono } from "next/font/google";
 import Providers from "@/components/providers";
+import ThemeToaster from "@/components/theme-toaster";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: "--font-be-vietnam-pro",
+  subsets: ["latin", "vietnamese"],
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 const geistMono = Geist_Mono({
@@ -27,12 +28,20 @@ export default function RootLayout({
   return (
     <html
       lang="vi"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
+      suppressHydrationWarning
+      className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-50 font-sans selection:bg-violet-500/30 selection:text-violet-200">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var saved=localStorage.getItem("triam-admin-theme");var theme=saved==="light"||saved==="dark"?saved:(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.dataset.theme=theme;document.documentElement.style.colorScheme=theme}catch(e){document.documentElement.dataset.theme="dark"}})();`,
+          }}
+        />
+      </head>
+      <body className="min-h-full flex flex-col bg-zinc-950 text-zinc-50 font-sans">
         <Providers>
           {children}
-          <Toaster richColors position="top-right" theme="dark" closeButton />
+          <ThemeToaster />
         </Providers>
       </body>
     </html>

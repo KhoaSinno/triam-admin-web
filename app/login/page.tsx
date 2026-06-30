@@ -204,7 +204,7 @@ export default function LoginPage() {
                 />
               </div>
             </div>
-            <div class="pt-2"></div>
+            <div className="pt-2"></div>
             <button
               type="submit"
               disabled={loading}

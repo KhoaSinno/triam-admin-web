@@ -12,12 +12,56 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // In-memory token storage to avoid async locks in API calls
 let clientToken: string | null = null;
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return true;
+    
+    // Decode base64 payload safely
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    
+    const payload = JSON.parse(jsonPayload);
+    const exp = payload.exp;
+    if (!exp) return true;
+    
+    // Expiration check with a 15-second grace period buffer
+    return (Date.now() / 1000) >= (exp - 15);
+  } catch {
+    return true;
+  }
+}
+
 export function getClientToken(): string | null {
   return clientToken;
 }
 
 export function setClientToken(token: string | null) {
   clientToken = token;
+}
+
+export async function getValidToken(): Promise<string | null> {
+  if (clientToken && !isTokenExpired(clientToken)) {
+    return clientToken;
+  }
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      clientToken = session.access_token;
+      return clientToken;
+    }
+  } catch (err) {
+    console.error("Failed to retrieve valid session:", err);
+  }
+
+  return null;
 }
 
 export const supabase = createClient(
@@ -28,7 +72,10 @@ export const supabase = createClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      // Disable navigator.locks to prevent tab-focus hangs in browsers
+      lock: async (name, acquireTimeout, fn) => {
+        return await fn();
+      },
     },
   }
 );
-

@@ -1,4 +1,4 @@
-import { getClientToken } from "./supabase";
+import { getValidToken } from "./supabase";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -133,7 +133,7 @@ export async function adminFetch<T>(
   init?: RequestInit,
   tokenOverride?: string,
 ): Promise<T> {
-  const token = tokenOverride || getClientToken();
+  const token = tokenOverride || (await getValidToken());
 
   if (!token) {
     throw new Error("NO_SESSION");

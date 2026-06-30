@@ -4,7 +4,7 @@ import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { getClientToken } from "@/lib/supabase";
+import { getValidToken } from "@/lib/supabase";
 import {
   adminFetch,
   AdminBooksResponse,
@@ -215,8 +215,8 @@ function SystemBooksContent() {
     performUpload(file);
   };
 
-  const performUpload = (file: File) => {
-    const token = getClientToken();
+  const performUpload = async (file: File) => {
+    const token = await getValidToken();
     if (!token) {
       toast.error("Hết phiên làm việc. Vui lòng đăng nhập lại.");
       return;

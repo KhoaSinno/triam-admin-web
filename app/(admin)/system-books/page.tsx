@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
 import { getValidToken } from "@/lib/supabase";
+import { formatDateShort, truncateId } from "@/lib/utils";
 import {
   adminFetch,
   AdminBooksResponse,
@@ -164,11 +165,6 @@ function SystemBooksContent() {
     if (newOffset >= 0) {
       setOffset(newOffset);
     }
-  };
-
-  const truncateId = (id: string) => {
-    if (id.length <= 10) return id;
-    return `${id.slice(0, 6)}...${id.slice(-4)}`;
   };
 
   // Upload Logic
@@ -368,30 +364,16 @@ function SystemBooksContent() {
       return (
         <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400">
           <Rocket className="h-3 w-3" />
-          Đã xuất bản (Public)
+          Đã xuất bản
         </span>
       );
     }
     return (
       <span className="inline-flex items-center gap-1 rounded-lg border border-zinc-850 bg-zinc-950 px-2 py-0.5 text-xs font-semibold text-zinc-500">
         <FolderLock className="h-3 w-3" />
-        Nội bộ (Internal)
+        Chưa xuất bản
       </span>
     );
-  };
-
-  const formatDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("vi-VN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
   };
 
   const isBothDisabled = !!(processBook?.has_full_mode || processBook?.has_pareto_mode);
@@ -609,7 +591,7 @@ function SystemBooksContent() {
                     {/* Book ID */}
                     <td data-label="Book ID" className="px-6 py-4 font-mono text-xs text-zinc-450">
                       <div className="flex items-center gap-1.5">
-                        <span title={book.id}>{truncateId(book.id)}</span>
+                        <span title={book.id}>{truncateId(book.id, 10, 6, 4)}</span>
                         <button
                           onClick={() => handleCopy(book.id, "Book ID")}
                           className="rounded p-1 text-zinc-700 hover:bg-zinc-850 hover:text-zinc-300 transition-all opacity-0 group-hover:opacity-100"
@@ -677,7 +659,7 @@ function SystemBooksContent() {
                     <td data-label="Cập nhật" className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-700 shrink-0" />
-                        <span>{formatDate(book.updated_at)}</span>
+                        <span>{formatDateShort(book.updated_at)}</span>
                       </div>
                     </td>
 

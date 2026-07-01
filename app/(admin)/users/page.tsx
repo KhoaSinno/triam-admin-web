@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { adminFetch, AdminUsersResponse } from "@/lib/api";
+import { formatDate, truncateId, getInitials, getPaginationRange } from "@/lib/utils";
 import {
   Users,
   Copy,
@@ -51,52 +52,26 @@ export default function UsersPage() {
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "Chưa có hoạt động";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
-  const truncateId = (id: string) => {
-    if (id.length <= 12) return id;
-    return `${id.slice(0, 8)}...${id.slice(-4)}`;
-  };
-
-  const getInitials = (name: string) => {
-    const parts = name.trim().split(/\s+/).filter(Boolean);
-    if (parts.length === 0) return "?";
-    return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
-  };
-
   const items = usersData?.items || [];
   const total = usersData?.total || 0;
 
-  const hasNext = offset + items.length < total;
-  const hasPrev = offset > 0;
-  const startNum = total === 0 ? 0 : offset + 1;
-  const endNum = offset + items.length;
+  const { hasNext, hasPrev, startNum, endNum } = getPaginationRange(
+    offset,
+    limit,
+    total,
+    items.length
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Title Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl bg-gradient-to-r from-zinc-50 to-zinc-400 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
             Quản lý Người dùng
           </h1>
           <p className="mt-1.5 text-sm text-zinc-450">
-            Danh sách người dùng đã phát sinh dữ liệu trong hệ thống Tri Âm
+            Danh sách người dùng hệ thống
           </p>
         </div>
 
@@ -163,7 +138,7 @@ export default function UsersPage() {
                     <td data-label="Người dùng" data-primary className="px-6 py-4">
                       <div className="flex min-w-0 items-center gap-3">
                         <div
-                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500/25 to-fuchsia-500/20 text-xs font-extrabold text-violet-500 ring-1 ring-violet-500/20 bg-cover bg-center"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-violet-500/25 to-fuchsia-500/20 text-xs font-extrabold text-violet-500 ring-1 ring-violet-500/20 bg-cover bg-center"
                           style={userItem.avatar_url ? { backgroundImage: `url("${userItem.avatar_url}")` } : undefined}
                           aria-hidden="true"
                         >

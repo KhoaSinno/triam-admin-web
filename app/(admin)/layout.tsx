@@ -32,13 +32,21 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, profile, loading, logout, isForbidden, error, checkAdminStatus } = useAuth();
+  const {
+    user,
+    profile,
+    loading,
+    logout,
+    isForbidden,
+    error,
+    checkAdminStatus,
+  } = useAuth();
   const pathname = usePathname();
   const queryClient = useQueryClient();
 
   const prefetchMenuItem = (href: string) => {
     const staleTime = 30 * 1000; // Consider data fresh for 30s during prefetch
-    
+
     if (href === "/dashboard") {
       queryClient.prefetchQuery({
         queryKey: ["adminDashboard"],
@@ -48,13 +56,15 @@ export default function AdminLayout({
     } else if (href === "/users") {
       queryClient.prefetchQuery({
         queryKey: ["adminUsers", 50, 0],
-        queryFn: () => adminFetch<AdminUsersResponse>("/users?limit=50&offset=0"),
+        queryFn: () =>
+          adminFetch<AdminUsersResponse>("/users?limit=50&offset=0"),
         staleTime,
       });
     } else if (href === "/books") {
       queryClient.prefetchQuery({
         queryKey: ["adminBooks", 20, 0, "", "", "", ""],
-        queryFn: () => adminFetch<AdminBooksResponse>("/books?limit=20&offset=0"),
+        queryFn: () =>
+          adminFetch<AdminBooksResponse>("/books?limit=20&offset=0"),
         staleTime,
       });
     } else if (href === "/jobs") {
@@ -66,7 +76,8 @@ export default function AdminLayout({
     } else if (href === "/audit-logs") {
       queryClient.prefetchQuery({
         queryKey: ["adminAuditLogs", 20, 0, "", ""],
-        queryFn: () => adminFetch<AdminAuditLogsResponse>("/audit-logs?limit=20&offset=0"),
+        queryFn: () =>
+          adminFetch<AdminAuditLogsResponse>("/audit-logs?limit=20&offset=0"),
         staleTime,
       });
     }
@@ -79,10 +90,12 @@ export default function AdminLayout({
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-red-500/10 text-red-300">
             <TriangleAlert className="h-5 w-5" />
           </div>
-          <h1 className="text-lg font-bold text-white">Không kiểm tra được quyền admin</h1>
+          <h1 className="text-lg font-bold text-white">
+            Không kiểm tra được quyền admin
+          </h1>
           <p className="mt-2 text-sm leading-6 text-zinc-400">
-            Phiên Supabase vẫn còn trong trình duyệt, nhưng API admin không phản hồi hoặc không thể
-            xác thực `/me`.
+            Phiên Supabase vẫn còn trong trình duyệt, nhưng API admin không phản
+            hồi hoặc không thể xác thực `/me`.
           </p>
           <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs text-red-200">
             {error}
@@ -152,7 +165,7 @@ export default function AdminLayout({
           <Link href="/dashboard" className="flex items-center gap-2.5">
             <BrandLogo className="h-8 w-8" />
             <span className="font-bold tracking-tight text-white bg-gradient-to-r from-zinc-50 via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
-              Tri Âm Admin
+              TriAm Admin
             </span>
           </Link>
         </div>
@@ -180,7 +193,9 @@ export default function AdminLayout({
                 )}
                 <Icon
                   className={`h-5 w-5 transition-transform duration-200 group-hover:scale-105 ${
-                    isActive ? "text-violet-400" : "text-zinc-500 group-hover:text-zinc-300"
+                    isActive
+                      ? "text-violet-400"
+                      : "text-zinc-500 group-hover:text-zinc-300"
                   }`}
                 />
                 {item.name}
@@ -211,10 +226,13 @@ export default function AdminLayout({
         <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-zinc-800 bg-zinc-950/85 px-4 backdrop-blur-md sm:px-6 lg:px-8">
           {/* Environment Status Badge */}
           <div className="flex min-w-0 items-center gap-3">
-            <Link href="/dashboard" className="flex shrink-0 items-center gap-2 lg:hidden">
+            <Link
+              href="/dashboard"
+              className="flex shrink-0 items-center gap-2 lg:hidden"
+            >
               <BrandLogo className="h-8 w-8" />
               <span className="hidden text-sm font-extrabold text-zinc-100 sm:inline">
-                Tri Âm Admin
+                TriAm Admin
               </span>
             </Link>
             <span
@@ -222,8 +240,8 @@ export default function AdminLayout({
                 env === "Production"
                   ? "bg-red-500/10 text-red-400 border border-red-500/20"
                   : env === "Staging"
-                  ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                  : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                    ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                    : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
               }`}
             >
               <span
@@ -231,8 +249,8 @@ export default function AdminLayout({
                   env === "Production"
                     ? "bg-red-500 animate-pulse"
                     : env === "Staging"
-                    ? "bg-amber-500 animate-pulse"
-                    : "bg-blue-500 animate-pulse"
+                      ? "bg-amber-500 animate-pulse"
+                      : "bg-blue-500 animate-pulse"
                 }`}
               />
               Môi trường: {env}
@@ -276,7 +294,9 @@ export default function AdminLayout({
         </nav>
 
         {/* Page Content */}
-        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+          {children}
+        </main>
       </div>
     </div>
   );

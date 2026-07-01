@@ -46,7 +46,7 @@
   --font-sans: var(--font-be-vietnam-pro), ui-sans-serif, system-ui;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular;
 
-  /* Compatibility mapping: existing utilities now resolve through Tri Âm tokens. */
+  /* Compatibility mapping: existing utilities now resolve through TriAm tokens. */
   --color-zinc-50: var(--foreground);
   --color-zinc-100: var(--text-strong);
   --color-zinc-200: var(--text-strong);
@@ -140,13 +140,14 @@ textarea {
     padding-inline: 16px;
   }
 
-  .responsive-pagination > :first-child {
+  .responsive-pagination> :first-child {
     width: 100%;
     line-height: 1.6;
   }
 }
 
 @media (max-width: 1199px) {
+
   .responsive-data-table,
   .responsive-data-table tbody {
     display: block;
@@ -201,7 +202,7 @@ textarea {
     background: color-mix(in srgb, var(--surface-soft) 42%, transparent);
   }
 
-  .responsive-data-table tbody td[data-actions] > div {
+  .responsive-data-table tbody td[data-actions]>div {
     justify-content: flex-start;
   }
 
@@ -224,4 +225,3 @@ textarea {
     grid-column: 1;
   }
 }
-

@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tri Âm Admin",
-  description: "Trang quản trị hệ thống Tri Âm",
+  title: "TriAm Admin",
+  description: "Trang quản trị hệ thống TriAm",
 };
 
 export default function RootLayout({
@@ -47,4 +47,3 @@ export default function RootLayout({
     </html>
   );
 }
-

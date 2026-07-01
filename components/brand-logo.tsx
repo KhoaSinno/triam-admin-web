@@ -5,7 +5,7 @@ type BrandLogoProps = {
 
 export default function BrandLogo({
   className = "",
-  label = "Tri Âm",
+  label = "TriAm",
 }: BrandLogoProps) {
   return (
     <span

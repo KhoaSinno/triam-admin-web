@@ -4,6 +4,7 @@ import React, { useState, Suspense } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adminFetch, AdminAuditLogsResponse } from "@/lib/api";
+import { formatDate, truncateId, getPaginationRange } from "@/lib/utils";
 import {
   FileText,
   ChevronLeft,
@@ -113,35 +114,17 @@ function AuditLogsContent() {
     }
   };
 
-  const truncateId = (id: string | null) => {
-    if (!id) return "—";
-    if (id.length <= 10) return id;
-    return `${id.slice(0, 6)}...${id.slice(-4)}`;
-  };
 
-  const formatDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
 
   const items = auditData?.items || [];
   const total = auditData?.total || 0;
 
-  const hasNext = offset + items.length < total;
-  const hasPrev = offset > 0;
-  const startNum = total === 0 ? 0 : offset + 1;
-  const endNum = offset + items.length;
+  const { hasNext, hasPrev, startNum, endNum } = getPaginationRange(
+    offset,
+    limit,
+    total,
+    items.length
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -270,7 +253,6 @@ function AuditLogsContent() {
                     key={log.id}
                     className="hover:bg-zinc-800/15 transition-colors group"
                   >
-                    {/* Timestamp column */}
                     <td data-label="Thời gian" data-primary className="px-6 py-4 text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
@@ -278,7 +260,7 @@ function AuditLogsContent() {
                       </div>
                       <div className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-zinc-500">
                         <span>Admin:</span>
-                        <span title={log.admin_user_id}>{truncateId(log.admin_user_id)}</span>
+                        <span title={log.admin_user_id}>{truncateId(log.admin_user_id, 10, 6, 4)}</span>
                         <button
                           onClick={() => handleCopy(log.admin_user_id, "Admin User ID")}
                           className="rounded p-0.5 text-zinc-650 hover:bg-zinc-850 hover:text-zinc-200 transition-all opacity-0 group-hover:opacity-100"
@@ -305,7 +287,7 @@ function AuditLogsContent() {
                       <p className="capitalize font-semibold text-zinc-350">{log.target_type || "Không xác định"}</p>
                       {log.target_id && (
                         <div className="flex items-center gap-1.5">
-                          <span title={log.target_id}>{truncateId(log.target_id)}</span>
+                          <span title={log.target_id}>{truncateId(log.target_id, 10, 6, 4)}</span>
                           <button
                             onClick={() => handleCopy(log.target_id!, "Target ID")}
                             className="rounded p-0.5 text-zinc-650 hover:bg-zinc-850 hover:text-zinc-200 transition-all opacity-0 group-hover:opacity-100"

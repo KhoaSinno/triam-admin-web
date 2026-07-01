@@ -10,7 +10,7 @@ Backend phase: Admin Phase 1 - RBAC, dashboard, books, jobs, audit logs
 
 ## 1. Mục Tiêu
 
-Admin Web là trang quản trị dành cho người vận hành hệ thống Tri Âm.
+Admin Web là trang quản trị dành cho người vận hành hệ thống TriAm.
 
 Phase 1 của Admin Web cần làm được:
 
@@ -217,7 +217,7 @@ Audit Logs
 
 Header nên có:
 
-- tên app `Tri Âm Admin`;
+- tên app `TriAm Admin`;
 - email admin đang login;
 - nút logout;
 - trạng thái môi trường nếu có: Local / Staging / Production.
@@ -237,7 +237,7 @@ Không nên làm giao diện marketing/landing page. Đây là trang vận hành
 
 ### UI Cần Có
 
-- Logo hoặc tên `Tri Âm Admin`.
+- Logo hoặc tên `TriAm Admin`.
 - Email/password login.
 - Google login nếu đã cấu hình.
 - Error message rõ:
@@ -349,7 +349,7 @@ Query:
 
 ```ts
 type AdminUsersQuery = {
-  limit?: number;  // 1..100, default 50
+  limit?: number; // 1..100, default 50
   offset?: number; // >= 0, default 0
 };
 ```
@@ -406,20 +406,15 @@ Query:
 
 ```ts
 type AdminBooksQuery = {
-  limit?: number;          // 1..100
-  offset?: number;         // >= 0
+  limit?: number; // 1..100
+  offset?: number; // >= 0
   status?: BookStatus;
   document_type?: DocumentType;
   user_id?: string;
-  q?: string;              // title search, 1..120 chars
+  q?: string; // title search, 1..120 chars
 };
 
-type BookStatus =
-  | "draft"
-  | "processing"
-  | "partial_ready"
-  | "ready"
-  | "error";
+type BookStatus = "draft" | "processing" | "partial_ready" | "ready" | "error";
 
 type DocumentType = "pdf" | "epub" | "docx";
 ```

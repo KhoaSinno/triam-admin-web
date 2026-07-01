@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { adminFetch, AdminBooksResponse, BookStatus, DocumentType } from "@/lib/api";
+import { formatDateShort, truncateId, getPaginationRange, getInitials } from "@/lib/utils";
 import {
   BookOpen,
   Copy,
@@ -91,15 +92,16 @@ function BooksContent() {
     toast.success("Đã sao chép ID vào bộ nhớ tạm");
   };
 
+  const handleUserFilter = (uid: string) => {
+    setUserId(uid);
+    setOffset(0);
+    router.push(`/books?user_id=${uid}`);
+  };
+
   const handlePageChange = (newOffset: number) => {
     if (newOffset >= 0) {
       setOffset(newOffset);
     }
-  };
-
-  const truncateId = (id: string) => {
-    if (id.length <= 10) return id;
-    return `${id.slice(0, 6)}...${id.slice(-4)}`;
   };
 
   const getStatusBadge = (statusVal: string | null) => {
@@ -122,27 +124,15 @@ function BooksContent() {
     );
   };
 
-  const formatDate = (dateStr: string) => {
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("vi-VN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
-
   const items = booksData?.items || [];
   const total = booksData?.total || 0;
 
-  const hasNext = offset + items.length < total;
-  const hasPrev = offset > 0;
-  const startNum = total === 0 ? 0 : offset + 1;
-  const endNum = offset + items.length;
+  const { hasNext, hasPrev, startNum, endNum } = getPaginationRange(
+    offset,
+    limit,
+    total,
+    items.length
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -330,16 +320,40 @@ function BooksContent() {
                       </div>
                     </td>
 
-                    {/* User ID with copy button */}
-                    <td data-label="Người dùng" className="px-6 py-4 font-mono text-xs text-zinc-400">
-                      <div className="flex items-center gap-1.5">
-                        <span title={book.user_id}>{truncateId(book.user_id)}</span>
-                        <button
-                          onClick={() => handleCopy(book.user_id)}
-                          className="rounded p-1 text-zinc-650 hover:bg-zinc-850 hover:text-zinc-200 transition-all opacity-0 group-hover:opacity-100"
-                        >
-                          <Copy className="h-2.5 w-2.5" />
-                        </button>
+                     {/* User ID with Copy and Filter */}
+                    <td data-label="Người dùng" className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        {/* Avatar / Initials */}
+                        {book.user_avatar_url ? (
+                          <img
+                            src={book.user_avatar_url}
+                            alt="Avatar"
+                            className="h-8 w-8 rounded-full border border-zinc-800 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 font-bold text-[10px]">
+                            {getInitials(book.user_display_name || book.user_email || book.user_id)}
+                          </div>
+                        )}
+                        {/* 2 lines of details */}
+                        <div className="flex flex-col min-w-0">
+                          <span
+                            onClick={() => handleUserFilter(book.user_id)}
+                            className="truncate text-xs font-bold text-zinc-200 hover:text-violet-400 transition-colors cursor-pointer"
+                            title={book.user_display_name || book.user_email || "Lọc theo người dùng này"}
+                          >
+                            {book.user_display_name || book.user_email || "Chưa thiết lập"}
+                          </span>
+                          <div className="flex items-center gap-1 font-mono text-[9px] text-zinc-550">
+                            <span title={book.user_id}>{truncateId(book.user_id, 10, 6, 4)}</span>
+                            <button
+                              onClick={() => handleCopy(book.user_id)}
+                              className="rounded p-0.5 text-zinc-650 hover:bg-zinc-850 hover:text-zinc-300 transition-all opacity-0 group-hover:opacity-100"
+                            >
+                              <Copy className="h-2 w-2" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     </td>
 
@@ -364,7 +378,7 @@ function BooksContent() {
                     <td data-label="Cập nhật" className="px-6 py-4 text-xs text-zinc-400 font-semibold font-variant-numeric: tabular-nums">
                       <div className="flex items-center gap-1.5">
                         <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
-                        <span>{formatDate(book.updated_at)}</span>
+                        <span>{formatDateShort(book.updated_at)}</span>
                       </div>
                     </td>
 

@@ -75,6 +75,9 @@ export type AdminBookListItem = {
   parent_shared_id?: string | null;
   has_full_mode?: boolean;
   has_pareto_mode?: boolean;
+  user_email?: string | null;
+  user_display_name?: string | null;
+  user_avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 };

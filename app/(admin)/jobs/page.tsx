@@ -11,6 +11,7 @@ import {
   ProcessingJobStatus,
   ProcessingJobType,
 } from "@/lib/api";
+import { formatDateShort, truncateId, getPaginationRange } from "@/lib/utils";
 import {
   Cpu,
   ChevronLeft,
@@ -128,26 +129,7 @@ function JobsContent() {
     }
   };
 
-  const truncateId = (id: string | null) => {
-    if (!id) return "—";
-    if (id.length <= 10) return id;
-    return `${id.slice(0, 6)}...${id.slice(-4)}`;
-  };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "—";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleDateString("vi-VN", {
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
 
   const getStatusBadge = (statusVal: string) => {
     const badges: Record<string, { label: string; style: string }> = {
@@ -170,10 +152,12 @@ function JobsContent() {
   const items = jobsData?.items || [];
   const total = jobsData?.total || 0;
 
-  const hasNext = offset + items.length < total;
-  const hasPrev = offset > 0;
-  const startNum = total === 0 ? 0 : offset + 1;
-  const endNum = offset + items.length;
+  const { hasNext, hasPrev, startNum, endNum } = getPaginationRange(
+    offset,
+    limit,
+    total,
+    items.length
+  );
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 relative">
@@ -352,7 +336,7 @@ function JobsContent() {
                       <td data-label="Job" data-primary className="px-6 py-4">
                         <div className="flex flex-col gap-0.5">
                           <div className="flex items-center gap-1.5 font-mono text-zinc-200">
-                            <span className="font-semibold">{truncateId(job.id)}</span>
+                            <span className="font-semibold">{truncateId(job.id, 10, 6, 4)}</span>
                             <button
                               onClick={() => handleCopy(job.id, "Job ID")}
                               className="rounded p-0.5 text-zinc-600 hover:bg-zinc-800 hover:text-zinc-200 transition-all opacity-0 group-hover:opacity-100"
@@ -421,19 +405,19 @@ function JobsContent() {
                               className="text-zinc-300 hover:text-violet-400 transition-colors cursor-pointer font-bold"
                               title="Xem chi tiết sách"
                             >
-                              Sách: {truncateId(job.book_id)}
+                              Sách: {truncateId(job.book_id, 10, 6, 4)}
                             </span>
                           ) : (
                             <span>Không gắn với sách</span>
                           )}
                           {job.user_id && (
-                          <span
-                            onClick={() => router.push(`/books?user_id=${job.user_id}`)}
-                            className="text-zinc-300 hover:text-violet-400 transition-colors cursor-pointer"
-                            title="Lọc sách theo user này"
-                          >
-                            User: {truncateId(job.user_id)}
-                          </span>
+                            <span
+                              onClick={() => router.push(`/books?user_id=${job.user_id}`)}
+                              className="text-zinc-300 hover:text-violet-400 transition-colors cursor-pointer"
+                              title="Lọc sách theo user này"
+                            >
+                              User: {truncateId(job.user_id, 10, 6, 4)}
+                            </span>
                           )}
                         </div>
                       </td>
@@ -442,7 +426,7 @@ function JobsContent() {
                       <td data-label="Cập nhật" className="px-6 py-4 text-zinc-405 font-semibold font-variant-numeric: tabular-nums">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3.5 w-3.5 text-zinc-650 shrink-0" />
-                          <span>{formatDate(job.updated_at)}</span>
+                          <span>{formatDateShort(job.updated_at)}</span>
                         </div>
                       </td>
 

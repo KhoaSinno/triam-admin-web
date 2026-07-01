@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminFetch, AdminBookDetailResponse, AdminJobListItem, getErrorMessage } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import {
   ArrowLeft,
   BookOpen,
@@ -83,22 +84,7 @@ export default function BookDetailPage() {
     }
   };
 
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "N/A";
-    try {
-      const date = new Date(dateStr);
-      return date.toLocaleString("vi-VN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch {
-      return dateStr;
-    }
-  };
+
 
   if (isLoading) {
     return (

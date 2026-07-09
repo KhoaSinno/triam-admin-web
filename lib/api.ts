@@ -103,10 +103,59 @@ export type AdminJobListItem = {
   finished_at: string | null;
 };
 
+export type AdminBookOwnerInfo = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  account_created_at: string | null;
+  last_sign_in_at: string | null;
+};
+
+export type AdminBookSectionListItem = {
+  id: string;
+  section_index: number;
+  title: string;
+  level: number;
+  path: string;
+  text_char_count: number;
+  page_start: number | null;
+  page_end: number | null;
+  modes: string[];
+  chunk_count: number;
+  has_text: boolean;
+};
+
+export type AdminSectionChunkItem = {
+  id: number;
+  chunk_index: number;
+  content: string;
+  search_text: string;
+  embedding_model: string;
+  embedding_version: string;
+  char_count: number;
+  token_count: number | null;
+  has_embedding: boolean;
+};
+
+export type AdminBookSectionDetailResponse = {
+  id: string;
+  section_index: number;
+  title: string;
+  level: number;
+  path: string;
+  text_content: string | null;
+  text_char_count: number;
+  page_start: number | null;
+  page_end: number | null;
+  chunks: AdminSectionChunkItem[];
+};
+
 export type AdminBookDetailResponse = AdminBookListItem & {
   latest_job: AdminJobListItem | null;
   learning_units_by_status: Record<string, number>;
   segment_count: number;
+  owner_info?: AdminBookOwnerInfo | null;
 };
 
 export type AdminAuditLogItem = {
@@ -183,4 +232,51 @@ export function getErrorMessage(error: unknown, fallback = "Đã xảy ra lỗi.
   }
 
   return fallback;
+}
+
+export async function getBookSections(bookId: string): Promise<AdminBookSectionListItem[]> {
+  return adminFetch<AdminBookSectionListItem[]>(`/books/${bookId}/sections`);
+}
+
+export async function getBookSectionDetail(
+  bookId: string,
+  sectionId: string
+): Promise<AdminBookSectionDetailResponse> {
+  return adminFetch<AdminBookSectionDetailResponse>(`/books/${bookId}/sections/${sectionId}`);
+}
+
+export async function getBookJobs(bookId: string): Promise<AdminJobListItem[]> {
+  return adminFetch<AdminJobListItem[]>(`/books/${bookId}/jobs`);
+}
+
+export type AdminExportChunkItem = {
+  chunk_index: number;
+  content: string;
+  embedding_model: string;
+  embedding_version: string;
+  token_count: number | null;
+  has_embedding: boolean;
+};
+
+export type AdminExportSectionItem = {
+  section_index: number;
+  title: string;
+  level: number;
+  path: string;
+  page_start: number | null;
+  page_end: number | null;
+  modes: string[];
+  chunks: AdminExportChunkItem[];
+};
+
+export type AdminBookExportResponse = {
+  book_id: string;
+  title: string;
+  author: string | null;
+  document_type: string | null;
+  sections: AdminExportSectionItem[];
+};
+
+export async function exportBookJson(bookId: string): Promise<AdminBookExportResponse> {
+  return adminFetch<AdminBookExportResponse>(`/books/${bookId}/export-json`);
 }

@@ -1,3 +1,397 @@
+# Hướng dẫn chi tiết triển khai Phase 3 - Nâng cấp Chi tiết Sách (Enhanced Book Detail)
+
+Tài liệu này hướng dẫn chi tiết từng bước (Step-by-step) cách thiết lập cấu trúc mã nguồn, viết mã cho cả **Backend (FastAPI)** và **Frontend (Next.js)** để hoàn thành Phase 3: Nâng cấp trang Chi tiết Sách.
+
+Giao diện chi tiết sách sẽ được thiết kế lại thành một **Dashboard 3 Tab cao cấp** theo phong cách **Glassmorphism Dark Theme**, tích hợp khả năng tải dữ liệu theo yêu cầu (on-demand loading) để tối ưu hóa hiệu năng truyền tải mạng.
+
+---
+
+## 1. Kiến trúc luồng hoạt động (Data Flow & Architecture)
+
+Để dễ hình dung cho các bạn fresher, dưới đây là sơ đồ di chuyển của dữ liệu từ cơ sở dữ liệu lên đến giao diện trình duyệt:
+
+```mermaid
+graph TD
+    A[(PostgreSQL DB)] -->|SQLAlchemy/SQLModel| B["Repository Layer: admin_repo.py"]
+    B -->|Fetch Row Objects| C["Service Layer: admin_service.py"]
+    C -->|Construct JSON Schema| D["API Router: api/v1/routers/admin.py"]
+    D -->|HTTP GET JSON| E["Frontend API Client: lib/api.ts"]
+    E -->|TanStack React Query| F["Frontend Hook: useQuery"]
+    F -->|Render UI / Tab State| G["React Component: books/[bookId]/page.tsx"]
+```
+
+### Chiến lược Tải theo yêu cầu (On-demand Loading)
+Sách nói có thể rất lớn (hàng triệu ký tự văn bản thô và hàng ngàn vector chunk). Nếu tải toàn bộ ở một API duy nhất `/books/{book_id}`, trình duyệt sẽ bị đơ và mạng bị nghẽn. 
+* **Giải pháp**: Tách thông tin thành nhiều cổng API phụ.
+  1. Khi vào trang $\rightarrow$ Gọi API `/books/{book_id}` để lấy thông tin tổng quan, thông tin người dùng sở hữu sách (`owner_info`) và `/books/{book_id}/sections` để hiển thị **cây thư mục trống**.
+  2. Chỉ khi Admin **click chọn** vào một chương cụ thể trên cây thư mục $\rightarrow$ Gọi API `/books/{book_id}/sections/{section_id}` để tải văn bản thô (`text_content`) và danh sách các chunk nhúng (`chunks`) của duy nhất chương đó.
+  3. Khi Admin chuyển sang Tab Lịch sử $\rightarrow$ Gọi API `/books/{book_id}/jobs` để lấy danh sách tiến trình.
+
+---
+
+## 2. Các bước triển khai Backend (FastAPI)
+
+### Bước 2.1: Cấu hình Schemas Dữ liệu
+**File cần sửa đổi**: [app/schemas/admin.py](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-backend/app/schemas/admin.py)
+
+Thêm các lớp Pydantic (Schema) mới vào cuối file để định nghĩa cấu trúc dữ liệu JSON trả về cho Client.
+
+```python
+# Thêm các lớp này vào cuối file app/schemas/admin.py
+
+class AdminBookOwnerInfo(BaseModel):
+    user_id: uuid.UUID
+    email: str | None = None
+    display_name: str | None = None
+    avatar_url: str | None = None
+    account_created_at: datetime | None = None
+    last_sign_in_at: datetime | None = None
+
+class AdminBookSectionListItem(BaseModel):
+    id: uuid.UUID
+    section_index: int
+    title: str
+    level: int
+    path: str
+    text_char_count: int
+    page_start: int | None = None
+    page_end: int | None = None
+    chunk_count: int = 0
+    has_text: bool = False
+
+class AdminSectionChunkItem(BaseModel):
+    id: int
+    chunk_index: int
+    content: str
+    search_text: str
+    embedding_model: str
+    embedding_version: str
+    char_count: int
+    token_count: int | None = None
+    has_embedding: bool = False
+
+class AdminBookSectionDetailResponse(BaseModel):
+    id: uuid.UUID
+    section_index: int
+    title: str
+    level: int
+    path: str
+    text_content: str | None = None
+    text_char_count: int
+    page_start: int | None = None
+    page_end: int | None = None
+    chunks: list[AdminSectionChunkItem] = []
+
+# Cập nhật lại lớp AdminBookDetailResponse hiện tại để bổ sung owner_info:
+class AdminBookDetailResponse(AdminBookListItem):
+    latest_job: AdminJobListItem | None = None
+    learning_units_by_status: dict[str, int] = Field(default_factory=dict)
+    segment_count: int = 0
+    owner_info: AdminBookOwnerInfo | None = None  # <-- THÊM DÒNG NÀY
+```
+
+---
+
+### Bước 2.2: Viết logic xử lý ở Service Layer
+**File cần sửa đổi**: [app/services/admin_service.py](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-backend/app/services/admin_service.py)
+
+#### 1. Cập nhật hàm `get_book_detail` hiện tại:
+Tìm hàm `get_book_detail` và chỉnh sửa để lấy thêm thông tin của User sở hữu cuốn sách đó:
+
+```python
+# Sửa lại hàm get_book_detail trong app/services/admin_service.py:
+
+def get_book_detail(session: Session, book_id: uuid.UUID) -> AdminBookDetailResponse:
+    book = get_admin_book_by_id(session, book_id)
+    if not book:
+        raise BookNotFoundError()
+
+    latest_job = get_latest_admin_job_for_book(session, book_id)
+    
+    # Query các chế độ học hiện tại của sách
+    rows = session.exec(
+        select(LearningUnit.mode)
+        .where(LearningUnit.book_id == book_id)
+        .group_by(LearningUnit.mode)
+    ).all()
+    book_modes = {mode.value for mode in rows}
+
+    # THÊM LOGIC LẤY THÔNG TIN CHỦ SỞ HỮU SÁCH:
+    owner_info = None
+    if book.user_id:
+        from app.repositories.admin_repo import auth_users
+        user_row = session.exec(
+            select(auth_users.c.id, auth_users.c.email, auth_users.c.created_at, auth_users.c.last_sign_in_at, auth_users.c.raw_user_meta_data)
+            .where(auth_users.c.id == book.user_id)
+        ).first()
+        if user_row:
+            u_id, email, c_at, l_in, meta = user_row
+            meta_dict = meta if isinstance(meta, dict) else {}
+            owner_info = AdminBookOwnerInfo(
+                user_id=u_id,
+                email=email,
+                display_name=meta_dict.get("name") or meta_dict.get("full_name"),
+                avatar_url=meta_dict.get("avatar_url") or meta_dict.get("picture"),
+                account_created_at=c_at,
+                last_sign_in_at=l_in
+            )
+
+    return AdminBookDetailResponse(
+        id=book.id,
+        user_id=book.user_id,
+        title=book.title,
+        author=book.author,
+        document_type=book.document_type,
+        status=book.status,
+        total_sections=book.total_sections,
+        total_units=book.total_units,
+        error_message=book.error_message,
+        is_shared=book.is_shared,
+        parent_shared_id=book.parent_shared_id,
+        has_full_mode="full" in book_modes,
+        has_pareto_mode="pareto" in book_modes,
+        created_at=book.created_at,
+        updated_at=book.updated_at,
+        latest_job=AdminJobListItem.model_validate(latest_job) if latest_job else None,
+        learning_units_by_status=count_learning_units_by_status(session, book_id),
+        segment_count=count_learning_unit_segments_for_book(session, book_id),
+        owner_info=owner_info,  # <-- GÁN THÔNG TIN VÀO SCHEMA TRẢ VỀ
+    )
+```
+
+#### 2. Thêm các hàm nghiệp vụ mới vào cuối file `app/services/admin_service.py`:
+
+```python
+# Thêm vào cuối file app/services/admin_service.py
+
+def get_book_sections(session: Session, book_id: uuid.UUID) -> list[AdminBookSectionListItem]:
+    # Lấy toàn bộ các section của sách, xếp theo thứ tự mục lục (section_index)
+    sections = session.exec(
+        select(BookSection)
+        .where(BookSection.book_id == book_id)
+        .order_by(BookSection.section_index.asc())
+    ).all()
+    
+    # Tính số lượng chunk đã nhúng của từng section để hiển thị ở cây mục lục
+    chunks_count_map = {}
+    if sections:
+        chunk_counts = session.exec(
+            select(BookSectionKnowledge.section_id, func.count(BookSectionKnowledge.id))
+            .where(BookSectionKnowledge.book_id == book_id)
+            .group_by(BookSectionKnowledge.section_id)
+        ).all()
+        chunks_count_map = {s_id: count for s_id, count in chunk_counts}
+
+    return [
+        AdminBookSectionListItem(
+            id=s.id,
+            section_index=s.section_index,
+            title=s.title,
+            level=s.level,
+            path=s.path,
+            text_char_count=s.text_char_count,
+            page_start=s.page_start,
+            page_end=s.page_end,
+            chunk_count=chunks_count_map.get(s.id, 0),
+            has_text=bool(s.text_content and s.text_content.strip())
+        )
+        for s in sections
+    ]
+
+def get_book_section_detail(session: Session, book_id: uuid.UUID, section_id: uuid.UUID) -> AdminBookSectionDetailResponse:
+    # Lấy thông tin section
+    section = session.exec(
+        select(BookSection)
+        .where(BookSection.book_id == book_id, BookSection.id == section_id)
+    ).first()
+    
+    if not section:
+        raise HTTPException(status_code=404, detail="Không tìm thấy mục lục sách.")
+
+    # Lấy các chunk kiến thức (vector embeddings) liên quan
+    chunks = session.exec(
+        select(BookSectionKnowledge)
+        .where(BookSectionKnowledge.section_id == section_id)
+        .order_by(BookSectionKnowledge.chunk_index.asc())
+    ).all()
+
+    chunk_items = [
+        AdminSectionChunkItem(
+            id=c.id,
+            chunk_index=c.chunk_index,
+            content=c.content,
+            search_text=c.search_text,
+            embedding_model=c.embedding_model,
+            embedding_version=c.embedding_version,
+            char_count=c.char_count,
+            token_count=c.token_count,
+            has_embedding=c.embedding is not None
+        )
+        for c in chunks
+    ]
+
+    return AdminBookSectionDetailResponse(
+        id=section.id,
+        section_index=section.section_index,
+        title=section.title,
+        level=section.level,
+        path=section.path,
+        text_content=section.text_content,
+        text_char_count=section.text_char_count,
+        page_start=section.page_start,
+        page_end=section.page_end,
+        chunks=chunk_items
+    )
+
+def get_book_jobs(session: Session, book_id: uuid.UUID) -> list[AdminJobListItem]:
+    # Truy vấn toàn bộ danh sách jobs chạy của cuốn sách này
+    jobs = session.exec(
+        select(ProcessingJob)
+        .where(ProcessingJob.book_id == book_id)
+        .order_by(ProcessingJob.created_at.desc())
+    ).all()
+    
+    return [AdminJobListItem.model_validate(j) for j in jobs]
+```
+
+---
+
+### Bước 2.3: Đăng ký API Routers
+**File cần sửa đổi**: [app/api/v1/routers/admin.py](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-backend/app/api/v1/routers/admin.py)
+
+Bổ sung 3 routers mới để cung cấp cổng API cho Frontend gọi. Chú ý đặt phía dưới router chi tiết sách cũ `/books/{book_id}`.
+
+```python
+# Thêm các routers này vào file app/api/v1/routers/admin.py
+
+@router.get("/books/{book_id}/sections", response_model=list[AdminBookSectionListItem])
+def read_admin_book_sections(
+    book_id: uuid.UUID,
+    admin_user: AdminUserDependency,
+    session: Annotated[Session, Depends(get_session)],
+):
+    return admin_service.get_book_sections(session, book_id)
+
+
+@router.get("/books/{book_id}/sections/{section_id}", response_model=AdminBookSectionDetailResponse)
+def read_admin_book_section_detail(
+    book_id: uuid.UUID,
+    section_id: uuid.UUID,
+    admin_user: AdminUserDependency,
+    session: Annotated[Session, Depends(get_session)],
+):
+    return admin_service.get_book_section_detail(session, book_id, section_id)
+
+
+@router.get("/books/{book_id}/jobs", response_model=list[AdminJobListItem])
+def read_admin_book_jobs(
+    book_id: uuid.UUID,
+    admin_user: AdminUserDependency,
+    session: Annotated[Session, Depends(get_session)],
+):
+    return admin_service.get_book_jobs(session, book_id)
+```
+
+---
+
+## 3. Các bước triển khai Frontend (Next.js)
+
+### Bước 3.1: Định nghĩa Types và Fetching APIs
+**File cần sửa đổi**: [lib/api.ts](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-admin-web/lib/api.ts)
+
+#### 1. Định nghĩa các kiểu dữ liệu khớp với Backend:
+```typescript
+// Thêm vào file lib/api.ts các Types sau:
+
+export type AdminBookOwnerInfo = {
+  user_id: string;
+  email: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  account_created_at: string | null;
+  last_sign_in_at: string | null;
+};
+
+export type AdminBookSectionListItem = {
+  id: string;
+  section_index: number;
+  title: string;
+  level: number;
+  path: string;
+  text_char_count: number;
+  page_start: number | null;
+  page_end: number | null;
+  chunk_count: number;
+  has_text: boolean;
+};
+
+export type AdminSectionChunkItem = {
+  id: number;
+  chunk_index: number;
+  content: string;
+  search_text: string;
+  embedding_model: string;
+  embedding_version: string;
+  char_count: number;
+  token_count: number | null;
+  has_embedding: boolean;
+};
+
+export type AdminBookSectionDetailResponse = {
+  id: string;
+  section_index: number;
+  title: string;
+  level: number;
+  path: string;
+  text_content: string | null;
+  text_char_count: number;
+  page_start: number | null;
+  page_end: number | null;
+  chunks: AdminSectionChunkItem[];
+};
+
+// Cập nhật lại kiểu AdminBookDetailResponse hiện tại:
+export type AdminBookDetailResponse = AdminBookListItem & {
+  latest_job: AdminJobListItem | null;
+  learning_units_by_status: Record<string, number>;
+  segment_count: number;
+  owner_info?: AdminBookOwnerInfo | null; // <-- THÊM DÒNG NÀY
+};
+```
+
+#### 2. Viết thêm 3 hàm fetch gọi dữ liệu từ API:
+```typescript
+// Thêm 3 hàm này vào cuối file lib/api.ts:
+
+export async function getBookSections(bookId: string): Promise<AdminBookSectionListItem[]> {
+  return adminFetch<AdminBookSectionListItem[]>(`/books/${bookId}/sections`);
+}
+
+export async function getBookSectionDetail(
+  bookId: string,
+  sectionId: string
+): Promise<AdminBookSectionDetailResponse> {
+  return adminFetch<AdminBookSectionDetailResponse>(`/books/${bookId}/sections/${sectionId}`);
+}
+
+export async function getBookJobs(bookId: string): Promise<AdminJobListItem[]> {
+  return adminFetch<AdminJobListItem[]>(`/books/${bookId}/jobs`);
+}
+```
+
+---
+
+### Bước 3.2: Tái cấu trúc trang Chi tiết Sách (Redesign UI/UX)
+**File cần sửa đổi**: [app/(admin)/books/[bookId]/page.tsx](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-admin-web/app/%28admin%29/books/%5BbookId%5D/page.tsx)
+
+Chúng ta sẽ viết lại file này bằng cách phân chia giao diện thành 3 Tab lớn:
+1. **Tổng quan (Overview)**
+2. **Cấu trúc & Vector Chunks (Sections)**
+3. **Lịch sử hoạt động (Jobs History)**
+
+Mã nguồn mới của file [books/[bookId]/page.tsx](file:///w:/WorkSpace_IT/_CAPSTON_PROJECT/triam-admin-web/app/%28admin%29/books/%5BbookId%5D/page.tsx) như sau:
+
+```tsx
 "use client";
 
 import React, { useState } from "react";
@@ -10,7 +404,6 @@ import {
   getBookSections, 
   getBookSectionDetail, 
   getBookJobs,
-  exportBookJson,
   AdminBookSectionListItem,
   AdminJobListItem
 } from "@/lib/api";
@@ -34,6 +427,7 @@ import {
   Database,
   FileText,
   User,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -43,21 +437,17 @@ export default function BookDetailPage() {
   const queryClient = useQueryClient();
   const bookId = params.bookId as string;
 
-  // Active Tab state
+  // Quản lý Tab hoạt động ('overview' | 'sections' | 'jobs')
   const [activeTab, setActiveTab] = useState<"overview" | "sections" | "jobs">("overview");
 
-  // Selected outline section ID for Tab 2
+  // ID Section hiện tại đang được chọn ở Tab 2
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
 
-  // Job retry confirmation modal state
+  // Quản lý trạng thái hộp thoại xác nhận Retry Job
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [retryJobId, setRetryJobId] = useState<string | null>(null);
 
-  // Outline display mode filter & export state
-  const [outlineModeFilter, setOutlineModeFilter] = useState<"all" | "full" | "pareto">("all");
-  const [isExporting, setIsExporting] = useState(false);
-
-  // Query 1: Fetch Book detail & Owner Info
+  // Query 1: Lấy thông tin tổng quan của Sách
   const {
     data: book,
     isLoading: isBookLoading,
@@ -70,7 +460,7 @@ export default function BookDetailPage() {
     queryFn: () => adminFetch<AdminBookDetailResponse>(`/books/${bookId}`),
   });
 
-  // Query 2: Fetch Book sections outline tree
+  // Query 2: Lấy mục lục cây chương mục (Chỉ chạy khi vào Tab 'sections')
   const {
     data: sections = [],
     isLoading: isSectionsLoading,
@@ -81,7 +471,7 @@ export default function BookDetailPage() {
     enabled: activeTab === "sections",
   });
 
-  // Query 3: Fetch detail contents of selected section
+  // Query 3: Chi tiết nội dung của Section được click chọn (Chỉ chạy khi có ID)
   const {
     data: sectionDetail,
     isLoading: isSectionDetailLoading,
@@ -91,7 +481,7 @@ export default function BookDetailPage() {
     enabled: activeTab === "sections" && !!selectedSectionId,
   });
 
-  // Query 4: Fetch book historical processing jobs
+  // Query 4: Lấy toàn bộ lịch sử các Jobs (Chỉ chạy khi vào Tab 'jobs')
   const {
     data: jobHistory = [],
     isLoading: isJobsLoading,
@@ -102,7 +492,7 @@ export default function BookDetailPage() {
     enabled: activeTab === "jobs",
   });
 
-  // Mutation: Trigger retry for failed jobs
+  // Mutation: Gửi lệnh chạy lại tiến trình Job
   const retryMutation = useMutation({
     mutationFn: (jobId: string) =>
       adminFetch<{ message: string }>(`/jobs/${jobId}/retry`, { method: "POST" }),
@@ -132,40 +522,6 @@ export default function BookDetailPage() {
       retryMutation.mutate(retryJobId);
     }
   };
-
-  const handleExportJson = async () => {
-    if (!book) return;
-    try {
-      setIsExporting(true);
-      const data = await exportBookJson(bookId);
-      const jsonStr = JSON.stringify(data, null, 2);
-      const blob = new Blob([jsonStr], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${book.title}_rag_export.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      toast.success("Đã xuất tệp JSON cấu trúc sách thành công!");
-    } catch (err) {
-      toast.error("Lỗi xuất JSON: " + getErrorMessage(err));
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const filteredSections = sections.filter((sec) => {
-    if (outlineModeFilter === "all") return true;
-    if (outlineModeFilter === "full") {
-      return sec.modes.includes("full") || sec.modes.length === 0;
-    }
-    if (outlineModeFilter === "pareto") {
-      return sec.modes.includes("pareto");
-    }
-    return true;
-  });
 
   if (isBookLoading) {
     return (
@@ -226,30 +582,18 @@ export default function BookDetailPage() {
           Danh sách sách
         </button>
 
-        <div className="flex items-center gap-2">
-          {/* Export JSON Button */}
-          <button
-            onClick={handleExportJson}
-            disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
-          >
-            <Database className={`h-3.5 w-3.5 ${isExporting ? "animate-pulse" : ""}`} />
-            {isExporting ? "Đang xuất JSON..." : "Xuất JSON"}
-          </button>
-
-          <button
-            onClick={() => {
-              refetchBook();
-              if (activeTab === "sections") refetchSections();
-              if (activeTab === "jobs") refetchJobs();
-            }}
-            disabled={isBookRefetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${isBookRefetching ? "animate-spin" : ""}`} />
-            Làm mới dữ liệu
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            refetchBook();
+            if (activeTab === "sections") refetchSections();
+            if (activeTab === "jobs") refetchJobs();
+          }}
+          disabled={isBookRefetching}
+          className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isBookRefetching ? "animate-spin" : ""}`} />
+          Làm mới dữ liệu
+        </button>
       </div>
 
       {/* Book Basic Header */}
@@ -301,7 +645,7 @@ export default function BookDetailPage() {
       {/* Tab Contents */}
       {activeTab === "overview" && (
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Metadata Card */}
+          {/* Metadata Card (Col span 2) */}
           <div className="md:col-span-2 space-y-6">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-5">
               <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
@@ -337,7 +681,7 @@ export default function BookDetailPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-zinc-550 font-bold uppercase tracking-wider block">Cập nhật lần cuối</span>
+                  <span className="text-zinc-500 font-bold uppercase tracking-wider block">Cập nhật lần cuối</span>
                   <div className="flex items-center gap-1.5 text-zinc-300 py-1">
                     <Calendar className="h-4 w-4 text-zinc-550" />
                     <span className="font-semibold">{formatDate(book.updated_at)}</span>
@@ -355,19 +699,19 @@ export default function BookDetailPage() {
 
               <div className="grid gap-4 sm:grid-cols-3 text-center">
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Tổng số Chương</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng số Chương</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.total_sections !== null ? book.total_sections : "—"}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-555 font-bold uppercase tracking-wider block">Tổng số Units</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng số Units</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.total_units !== null ? book.total_units : "—"}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Tổng Phân đoạn</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng Phân đoạn</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.segment_count || 0}
                   </span>
@@ -398,7 +742,7 @@ export default function BookDetailPage() {
             </div>
           </div>
 
-          {/* Owner Info Card */}
+          {/* Owner Info Card (Right Column) */}
           <div className="space-y-6">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-4">
               <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
@@ -412,6 +756,7 @@ export default function BookDetailPage() {
                 </div>
               ) : (
                 <div className="space-y-5 text-xs">
+                  {/* User Profile Header */}
                   <div className="flex items-center gap-3">
                     {book.owner_info.avatar_url ? (
                       <img
@@ -452,7 +797,7 @@ export default function BookDetailPage() {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-zinc-550 uppercase tracking-wider">Đăng nhập cuối</span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Đăng nhập cuối</span>
                       <span className="text-zinc-300">{formatDateShort(book.owner_info.last_sign_in_at)}</span>
                     </div>
                   </div>
@@ -463,56 +808,27 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      {/* Tab 2: Book Outline & Embedding Vector Chunks */}
+      {/* Tab 2: Book Outline and Embedding Vector Chunks */}
       {activeTab === "sections" && (
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Left: Outline tree */}
+          {/* Left Column: List of Sections */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-4 shadow-md backdrop-blur-xl h-[560px] flex flex-col">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider border-b border-zinc-850 pb-3 mb-3 shrink-0 flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-violet-400" />
-              Mục lục cuốn sách ({filteredSections.length})
+              Mục lục cuốn sách ({sections.length})
             </h3>
-
-            {/* Display Mode Segment buttons */}
-            <div className="mb-3 shrink-0">
-              <label className="text-[9px] text-zinc-550 font-bold uppercase tracking-wide block mb-1">
-                Chế độ hiển thị mục lục
-              </label>
-              <div className="grid grid-cols-3 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
-                {[
-                  { value: "all", label: "Tất cả" },
-                  { value: "full", label: "Đầy đủ" },
-                  { value: "pareto", label: "Tinh gọn" }
-                ].map((modeOpt) => (
-                  <button
-                    key={modeOpt.value}
-                    onClick={() => {
-                      setOutlineModeFilter(modeOpt.value as any);
-                      setSelectedSectionId(null); // Clear selected section on mode filter change
-                    }}
-                    className={`py-1.5 text-[9px] font-bold rounded-md transition-all ${
-                      outlineModeFilter === modeOpt.value
-                        ? "bg-violet-600 text-white"
-                        : "text-zinc-500 hover:text-zinc-200"
-                    }`}
-                  >
-                    {modeOpt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {isSectionsLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-550 border-t-transparent"></div>
               </div>
-            ) : filteredSections.length === 0 ? (
-              <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 italic text-center px-4">
-                Không tìm thấy mục lục nào khớp với bộ lọc chế độ hiển thị này.
+            ) : sections.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 italic">
+                Sách này chưa được trích xuất mục lục.
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-1 space-y-1 scrollbar-thin">
-                {filteredSections.map((sec) => {
+                {sections.map((sec) => {
                   const isSelected = selectedSectionId === sec.id;
                   return (
                     <button
@@ -528,7 +844,7 @@ export default function BookDetailPage() {
                       <ChevronRight className={`h-3.5 w-3.5 mt-0.5 shrink-0 transition-transform ${isSelected ? "rotate-90 text-violet-400" : "text-zinc-600 group-hover:text-zinc-400"}`} />
                       <div className="min-w-0 flex-1">
                         <p className="truncate leading-tight">{sec.title}</p>
-                        <p className="text-[9px] text-zinc-555 mt-1 font-mono font-semibold">
+                        <p className="text-[9px] text-zinc-550 mt-1 font-mono font-medium">
                           Idx: {sec.section_index} · {sec.text_char_count.toLocaleString()} ký tự · {sec.chunk_count} chunks
                         </p>
                       </div>
@@ -539,7 +855,7 @@ export default function BookDetailPage() {
             )}
           </div>
 
-          {/* Right: Section Text & Vector details */}
+          {/* Right Column: Section Text & Vector details */}
           <div className="md:col-span-2 space-y-6">
             {!selectedSectionId ? (
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-12 shadow-md backdrop-blur-xl text-center text-zinc-500 italic h-full flex flex-col justify-center items-center">
@@ -590,7 +906,7 @@ export default function BookDetailPage() {
                     </div>
                   ) : (
                     <div className="space-y-4 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
-                      {sectionDetail.chunks.map((chunk) => (
+                      {sectionDetail.chunks.map((chunk, idx) => (
                         <div key={chunk.id} className="rounded-xl border border-zinc-850 bg-zinc-950/50 p-4 space-y-3">
                           <div className="flex items-center justify-between text-[10px] font-mono font-bold border-b border-zinc-900 pb-2">
                             <span className="text-violet-400">CHUNK INDEX: {chunk.chunk_index}</span>
@@ -602,10 +918,12 @@ export default function BookDetailPage() {
                             </div>
                           </div>
 
-                          <p className="text-xs text-zinc-355 leading-relaxed italic bg-zinc-955 p-3 rounded-lg border border-zinc-900 select-all max-h-24 overflow-y-auto scrollbar-thin">
+                          {/* Chunk Text content preview */}
+                          <p className="text-xs text-zinc-350 leading-relaxed italic bg-zinc-950/80 p-3 rounded-lg border border-zinc-900 select-all max-h-24 overflow-y-auto scrollbar-thin">
                             "{chunk.content}"
                           </p>
 
+                          {/* Chunk Metadata details */}
                           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[9px] text-zinc-500 font-semibold font-mono uppercase">
                             <div>Model: <span className="text-zinc-400 lowercase">{chunk.embedding_model}</span></div>
                             <div>Version: <span className="text-zinc-400">{chunk.embedding_version}</span></div>
@@ -673,7 +991,7 @@ export default function BookDetailPage() {
                         <td className="px-6 py-4">
                           <div className="flex flex-col gap-0.5">
                             <span className="font-bold text-zinc-200 uppercase">{job.job_type}</span>
-                            <span className="text-[10px] text-zinc-550 font-semibold capitalize">Chế độ: {job.mode || "Mặc định"}</span>
+                            <span className="text-[10px] text-zinc-500 font-semibold capitalize">Chế độ: {job.mode || "Mặc định"}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
@@ -687,13 +1005,13 @@ export default function BookDetailPage() {
                             <div>Units: <span className="text-zinc-300">{job.done_units}/{job.total_units}</span></div>
                             {job.estimated_input_tokens && (
                               <div className="flex items-center gap-1">
-                                <Coins className="h-3 w-3 text-zinc-550" />
+                                <Coins className="h-3 w-3 text-zinc-500" />
                                 <span>{new Intl.NumberFormat().format(job.estimated_input_tokens)}</span>
                               </div>
                             )}
                             {job.estimated_audio_seconds && (
                               <div className="flex items-center gap-1">
-                                <Clock className="h-3 w-3 text-zinc-550" />
+                                <Clock className="h-3 w-3 text-zinc-500" />
                                 <span>{(job.estimated_audio_seconds / 3600).toFixed(1)} giờ</span>
                               </div>
                             )}
@@ -765,3 +1083,37 @@ export default function BookDetailPage() {
     </div>
   );
 }
+```
+
+---
+
+## 4. Giải thích kiến thức cho các bạn Fresher (Knowledge for Freshers)
+
+Để các bạn fresher dễ dàng tiếp thu, hiểu được cách viết và tại sao lại viết code như trên:
+
+### A. Next.js Routing & Hooks
+* **`useParams()`**: Lấy tham số động (Dynamic Route Parameter) trên URL. Ví dụ, cấu trúc file là `/books/[bookId]/page.tsx`, khi truy cập `/books/123-abc`, `params.bookId` sẽ tự động nhận giá trị `"123-abc"`.
+* **`useRouter()`**: Đối tượng điều hướng trang. Dùng `router.push('/path')` để chuyển trang và `router.replace('/path')` để thay thế URL hiện tại (không lưu lịch sử quay lại).
+
+### B. TanStack React Query (`useQuery`, `useMutation`)
+Đây là bộ thư viện xử lý state bất đồng bộ (Server State) tốt nhất hiện nay.
+1. **`queryKey`**: Mảng định danh duy nhất cho bộ nhớ đệm (Cache). Ví dụ: `["adminBookDetail", bookId]`. Nếu `bookId` thay đổi, React Query tự động tải lại API.
+2. **`queryFn`**: Hàm thực thi gọi API.
+3. **`enabled` (Lấy dữ liệu theo yêu cầu)**: Thuộc tính kiểm soát việc chạy API.
+   * `enabled: activeTab === "jobs"` nghĩa là: Chỉ khi Admin chuyển sang tab Lịch sử (Job History), API lấy danh sách Job mới chạy. Điều này giúp tối ưu lượng request lên server và giảm tải mạng.
+4. **`useMutation`**: Dùng cho các hành động thay đổi dữ liệu (POST/PUT/DELETE) như hành động **Retry Job**. Khi thành công, sử dụng `queryClient.invalidateQueries` để thông báo cho React Query biết dữ liệu cũ đã lỗi thời và tự động fetch lại bảng hiển thị mới nhất.
+
+### C. Kỹ thuật Tránh lỗi "Hydration Mismatch" khi hiển thị Ngày/Giờ
+Lỗi này xảy ra khi cấu trúc HTML render trên Server và Browser lệch nhau (ví dụ: máy chủ Vercel đặt múi giờ GMT+0 còn máy khách đặt GMT+7).
+* **Giải pháp**: Chúng ta không sử dụng `date.toLocaleString()` trực tiếp không tham số. Thay vào đó, ta sử dụng hàm `formatDate` và `formatDateShort` tự định dạng thủ công bằng các phương thức `getDate()`, `getMonth()`, `getFullYear()` đã tạo ở `lib/utils.ts`.
+
+---
+
+## 5. Danh sách kiểm tra nghiệm thu (Verification Checklist)
+
+Khi triển khai xong, các bạn cần test các mục sau trước khi tạo Pull Request:
+1. [ ] **Build Validation**: Chạy `pnpm build` không báo bất kỳ lỗi cảnh báo hay kiểu dữ liệu TypeScript nào.
+2. [ ] **Lọc tab**: Đảm bảo chuyển tab mượt mà, tab Mục lục hiển thị outline cây thư mục chuẩn.
+3. [ ] **Lazy loading**: Click chọn 1 mục lục ở cột trái, đảm bảo văn bản thô bên phải hiển thị đúng, kèm các block vector chunk tương ứng.
+4. [ ] **Retry Job**: Click thử nút Retry một Job đang lỗi ở Tab 3 $\rightarrow$ Hiển thị Modal xác nhận $\rightarrow$ Nhấn Xác nhận $\rightarrow$ Toast báo thành công và bảng tự cập nhật lại trạng thái Job thành `queued` hoặc `processing`.
+5. [ ] **Sao chép**: Bấm nút Copy tại dòng User UUID hoặc Book ID, đảm bảo hệ thống copy thành công vào clipboard và bắn toast thông báo.

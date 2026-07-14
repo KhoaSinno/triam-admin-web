@@ -168,6 +168,15 @@ export type AdminAuditLogItem = {
   created_at: string;
 };
 
+export type AdminDeviceTokenItem = {
+  id: string;
+  user_id: string;
+  device_token: string;
+  token_preview: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PaginatedResponse<T> = {
   total: number;
   limit: number;
@@ -179,6 +188,7 @@ export type AdminUsersResponse = PaginatedResponse<AdminUserListItem>;
 export type AdminBooksResponse = PaginatedResponse<AdminBookListItem>;
 export type AdminJobsResponse = PaginatedResponse<AdminJobListItem>;
 export type AdminAuditLogsResponse = PaginatedResponse<AdminAuditLogItem>;
+export type AdminDeviceTokensResponse = PaginatedResponse<AdminDeviceTokenItem>;
 
 export async function adminFetch<T>(
   path: string,

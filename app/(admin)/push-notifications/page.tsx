@@ -14,6 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getValidToken } from "@/lib/supabase";
+import {
+  adminFetch,
+  AdminDeviceTokenItem,
+  AdminDeviceTokensResponse,
+} from "@/lib/api";
 
 type PushStatusResponse = {
   configured: boolean;
@@ -63,6 +68,9 @@ async function adminDevFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export default function PushNotificationsPage() {
   const [token, setToken] = useState("");
+  const [userId, setUserId] = useState("");
+  const [deviceTokens, setDeviceTokens] = useState<AdminDeviceTokenItem[]>([]);
+  const [isLoadingTokens, setIsLoadingTokens] = useState(false);
   const [title, setTitle] = useState("Tri Âm debug");
   const [body, setBody] = useState("Thông báo test trực tiếp từ Firebase");
   const [dataJson, setDataJson] = useState(defaultData);
@@ -108,6 +116,34 @@ export default function PushNotificationsPage() {
     }
   };
 
+  const loadDeviceTokens = async () => {
+    setIsLoadingTokens(true);
+    try {
+      const params = new URLSearchParams({
+        limit: "20",
+        offset: "0",
+      });
+      if (userId.trim()) {
+        params.set("user_id", userId.trim());
+      }
+      const result = await adminFetch<AdminDeviceTokensResponse>(
+        `/notifications/device-tokens?${params.toString()}`,
+      );
+      setDeviceTokens(result.items);
+      if (!result.items.length) {
+        toast.info("Chưa có device token nào khớp bộ lọc.");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Không tải được device tokens.",
+      );
+    } finally {
+      setIsLoadingTokens(false);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -121,6 +157,21 @@ export default function PushNotificationsPage() {
           error instanceof Error
             ? error.message
             : "Không kiểm tra được Firebase route.",
+        );
+      });
+
+    adminFetch<AdminDeviceTokensResponse>(
+      "/notifications/device-tokens?limit=20&offset=0",
+    )
+      .then((result) => {
+        if (!cancelled) setDeviceTokens(result.items);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Không tải được device tokens.",
         );
       });
 
@@ -186,9 +237,10 @@ export default function PushNotificationsPage() {
             Gửi thông báo Firebase trực tiếp
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-450">
-            Trang này bỏ qua backend notification DB và gửi FCM trực tiếp tới
-            một thiết bị bằng registration token. Dùng để debug foreground,
-            background, killed-app tray và payload tap/open.
+            Trang này lấy token thiết bị đã đăng ký trên backend rồi gửi FCM
+            trực tiếp tới máy test. Luồng này vẫn không tạo notification DB row,
+            chỉ dùng để debug foreground, background, killed-app tray và payload
+            tap/open.
           </p>
         </div>
 
@@ -210,8 +262,8 @@ export default function PushNotificationsPage() {
         />
         <InfoCard
           icon={<Smartphone className="h-5 w-5" />}
-          title="Gửi theo token"
-          description="Nhập FCM registration token của máy test đang cài app đúng Firebase project."
+          title="Lấy token từ server"
+          description="App Flutter tự đăng ký FCM token lên backend, admin web chỉ chọn token đã có."
         />
         <InfoCard
           icon={<BellRing className="h-5 w-5" />}
@@ -223,9 +275,71 @@ export default function PushNotificationsPage() {
       <section className="grid gap-6 xl:grid-cols-[1fr_380px]">
         <div className="rounded-3xl border border-zinc-800 bg-zinc-900/20 p-5 shadow-lg backdrop-blur-xl sm:p-6">
           <div className="grid gap-5">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <label className="grid flex-1 gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-zinc-400">
+                    User ID để lọc token
+                  </span>
+                  <input
+                    value={userId}
+                    onChange={(event) => setUserId(event.target.value)}
+                    placeholder="Để trống để lấy 20 token mới nhất…"
+                    className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3 font-mono text-xs text-zinc-100 outline-none transition focus:border-violet-500"
+                  />
+                </label>
+                <button
+                  onClick={loadDeviceTokens}
+                  disabled={isLoadingTokens}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm font-bold text-zinc-200 transition hover:bg-zinc-800 hover:text-white disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`h-4 w-4 ${isLoadingTokens ? "animate-spin" : ""}`}
+                  />
+                  Tải token
+                </button>
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                {deviceTokens.length ? (
+                  deviceTokens.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => {
+                        setToken(item.device_token);
+                        toast.success("Đã chọn device token.");
+                      }}
+                      className={`rounded-2xl border p-3 text-left transition hover:border-violet-500/60 hover:bg-violet-500/5 ${
+                        token === item.device_token
+                          ? "border-violet-500/70 bg-violet-500/10"
+                          : "border-zinc-800 bg-zinc-950/50"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <span className="font-mono text-xs font-bold text-zinc-100">
+                          {item.token_preview}
+                        </span>
+                        <span className="text-[11px] font-semibold text-zinc-500">
+                          updated {new Date(item.updated_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="mt-1 font-mono text-[11px] text-zinc-550">
+                        user: {item.user_id}
+                      </p>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-zinc-800 p-4 text-xs text-zinc-500">
+                    Chưa có token. Hãy chạy app Flutter với Firebase config và
+                    đăng nhập để app tự đăng ký token lên backend.
+                  </div>
+                )}
+              </div>
+            </div>
+
             <label className="grid gap-2">
               <span className="text-xs font-bold uppercase tracking-wide text-zinc-400">
-                FCM registration token
+                FCM registration token đang chọn
               </span>
               <textarea
                 value={token}

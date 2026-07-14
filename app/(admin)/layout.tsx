@@ -14,6 +14,7 @@ import {
   RefreshCcw,
   TriangleAlert,
   LibraryBig,
+  BellRing,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import ThemeToggle from "@/components/theme-toggle";
@@ -144,6 +145,7 @@ export default function AdminLayout({
     { name: "Sách", href: "/books", icon: BookOpen },
     { name: "Sách hệ thống", href: "/system-books", icon: LibraryBig },
     { name: "Jobs xử lý", href: "/jobs", icon: Cpu },
+    { name: "Push debug", href: "/push-notifications", icon: BellRing },
     { name: "Nhật ký hệ thống", href: "/audit-logs", icon: FileText },
   ];
 

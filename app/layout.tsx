@@ -18,6 +18,24 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "TriAm Admin",
   description: "Trang quản trị hệ thống TriAm",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+    other: [
+      {
+        rel: "icon",
+        url: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+      },
+      {
+        rel: "icon",
+        url: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+      },
+    ],
+  },
 };
 
 export default function RootLayout({

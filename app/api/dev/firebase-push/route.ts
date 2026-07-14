@@ -6,7 +6,9 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 type FirebasePushRequest = {
+  targetType?: unknown;
   token?: unknown;
+  topic?: unknown;
   title?: unknown;
   body?: unknown;
   data?: unknown;
@@ -90,13 +92,22 @@ export async function POST(request: Request) {
     | FirebasePushRequest
     | null;
 
+  const targetType =
+    payload?.targetType === "topic" || payload?.targetType === "token"
+      ? payload.targetType
+      : "token";
   const token = typeof payload?.token === "string" ? payload.token.trim() : "";
+  const topic = typeof payload?.topic === "string" ? payload.topic.trim() : "";
   const title = typeof payload?.title === "string" ? payload.title.trim() : "";
   const body = typeof payload?.body === "string" ? payload.body.trim() : "";
   const data = normalizeData(payload?.data);
 
-  if (!token) {
+  if (targetType === "token" && !token) {
     return jsonResponse({ detail: "FCM token is required." }, 400);
+  }
+
+  if (targetType === "topic" && !topic) {
+    return jsonResponse({ detail: "FCM topic is required." }, 400);
   }
 
   if (!title || !body) {
@@ -105,7 +116,7 @@ export async function POST(request: Request) {
 
   try {
     const messageId = await getFirebaseAdminMessaging().send({
-      token,
+      ...(targetType === "topic" ? { topic } : { token }),
       notification: { title, body },
       data: {
         source: "admin_web_direct_debug",

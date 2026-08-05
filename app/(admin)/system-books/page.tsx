@@ -8,6 +8,7 @@ import { getValidToken } from "@/lib/supabase";
 import { formatDateShort, truncateId } from "@/lib/utils";
 import {
   adminFetch,
+  adminUploadBook,
   AdminBooksResponse,
   BookStatus,
   DocumentType,
@@ -212,64 +213,22 @@ function SystemBooksContent() {
   };
 
   const performUpload = async (file: File) => {
-    const token = await getValidToken();
-    if (!token) {
-      toast.error("Hết phiên làm việc. Vui lòng đăng nhập lại.");
-      return;
-    }
-
     setIsUploading(true);
     setUploadProgress(0);
 
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const xhr = new XMLHttpRequest();
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-    xhr.open("POST", `${apiBase}/api/v1/upload`);
-    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-
-    xhr.upload.onprogress = (event) => {
-      if (event.lengthComputable) {
-        const percent = Math.round((event.loaded / event.total) * 100);
-        setUploadProgress(percent);
-      }
-    };
-
-    xhr.onload = () => {
+    try {
+      const res = await adminUploadBook(file);
+      toast.success("Tải sách lên thành công! Tiến trình bóc tách và sinh vector đang chạy ngầm.");
+      localStorage.setItem("triam_admin_active_job_id", res.job_id);
+      window.dispatchEvent(new Event("triam_admin_job_started"));
+      queryClient.invalidateQueries({ queryKey: ["systemBooks"] });
+      queryClient.invalidateQueries({ queryKey: ["adminBooks"] });
+      setUploadOpen(false);
+    } catch (err) {
+      toast.error("Không thể upload sách: " + getErrorMessage(err));
+    } finally {
       setIsUploading(false);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          toast.success("Tải sách lên thành công!");
-          queryClient.invalidateQueries({ queryKey: ["systemBooks"] });
-          setUploadOpen(false);
-          
-          // Open process trigger modal for the newly created book
-          const cleanTitle = file.name.substring(0, file.name.lastIndexOf(".")) || file.name;
-          setProcessBook({
-            id: res.book_id,
-            title: cleanTitle,
-          });
-        } catch {
-          toast.error("Không thể phân tích phản hồi upload.");
-        }
-      } else {
-        try {
-          const res = JSON.parse(xhr.responseText);
-          toast.error(res.detail || "Lỗi tải sách lên.");
-        } catch {
-          toast.error(`Tải lên thất bại với mã lỗi: ${xhr.status}`);
-        }
-      }
-    };
-
-    xhr.onerror = () => {
-      setIsUploading(false);
-      toast.error("Lỗi kết nối mạng khi upload.");
-    };
-
-    xhr.send(formData);
+    }
   };
 
   // Trigger processing mutation

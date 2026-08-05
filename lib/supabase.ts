@@ -52,16 +52,21 @@ export async function getValidToken(): Promise<string | null> {
   }
 
   try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session) {
-      clientToken = session.access_token;
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
+      setTimeout(() => resolve({ data: { session: null } }), 3000)
+    );
+
+    const res = await Promise.race([sessionPromise, timeoutPromise]);
+    if (res?.data?.session) {
+      clientToken = res.data.session.access_token;
       return clientToken;
     }
   } catch (err) {
     console.error("Failed to retrieve valid session:", err);
   }
 
-  return null;
+  return clientToken;
 }
 
 export const supabase = createClient(

@@ -1,7 +1,8 @@
 import { getValidToken } from "./supabase";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const rawApiBaseUrl =
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+const API_BASE_URL = rawApiBaseUrl.replace("localhost", "127.0.0.1");
 
 // TypeScript types from API Contract
 export type BookStatus =
@@ -20,6 +21,7 @@ export type ProcessingJobStatus =
   | "processing"
   | "partial_ready"
   | "ready"
+  | "completed"
   | "error"
   | "cancelled";
 
@@ -156,6 +158,9 @@ export type AdminBookDetailResponse = AdminBookListItem & {
   learning_units_by_status: Record<string, number>;
   segment_count: number;
   owner_info?: AdminBookOwnerInfo | null;
+  ai_summary?: Record<string, any> | null;
+  ai_summary_status?: string;
+  ai_summary_error?: string | null;
 };
 
 export type AdminAuditLogItem = {
@@ -200,30 +205,35 @@ export async function adminFetch<T>(
     ...(init?.headers as Record<string, string> ?? {}),
   };
 
-  if (!(init?.body instanceof FormData) && !headers["Content-Type"]) {
+  if (!(init?.body instanceof FormData) && init?.body !== undefined && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
-  const res = await fetch(url, {
-    ...init,
-    headers,
-  });
+  try {
+    const res = await fetch(url, {
+      ...init,
+      headers,
+    });
 
-  if (res.status === 401) {
-    throw new Error("UNAUTHORIZED");
+    if (res.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+
+    if (res.status === 403) {
+      throw new Error("ADMIN_FORBIDDEN");
+    }
+
+    const body = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      throw new Error(body?.detail ?? `ADMIN_API_ERROR (${res.status})`);
+    }
+
+    return body as T;
+  } catch (err) {
+    console.error(`[adminFetch Failed] ${init?.method || "GET"} ${url}:`, err);
+    throw err;
   }
-
-  if (res.status === 403) {
-    throw new Error("ADMIN_FORBIDDEN");
-  }
-
-  const body = await res.json().catch(() => null);
-
-  if (!res.ok) {
-    throw new Error(body?.detail ?? "ADMIN_API_ERROR");
-  }
-
-  return body as T;
 }
 
 export function getErrorMessage(error: unknown, fallback = "Đã xảy ra lỗi."): string {
@@ -279,4 +289,108 @@ export type AdminBookExportResponse = {
 
 export async function exportBookJson(bookId: string): Promise<AdminBookExportResponse> {
   return adminFetch<AdminBookExportResponse>(`/books/${bookId}/export-json`);
+}
+
+export type AdminSegmentItem = {
+  id: number;
+  segment_index: number;
+  audio_url: string | null;
+  text_content: string | null;
+  duration_ms: number | null;
+};
+
+export type AdminLearningUnitItem = {
+  id: string;
+  unit_index: number;
+  title: string;
+  unit_type: string;
+  mode: string;
+  status: string;
+  estimated_audio_seconds: number;
+  main_segment_count: number;
+  review_text: string | null;
+  review_audio_url: string | null;
+  planner_reason: string | null;
+  segments: AdminSegmentItem[];
+};
+
+export type AdminBookAudioUnitsResponse = {
+  book_id: string;
+  mode: string;
+  total_units: number;
+  units: AdminLearningUnitItem[];
+};
+
+export type AdminBookUpdateMetadataPayload = {
+  title?: string;
+  author?: string;
+  is_shared?: boolean;
+};
+
+export type AdminBookSummaryResponse = {
+  book_id: string;
+  status: string;
+  ai_summary: Record<string, any> | null;
+  error_message: string | null;
+};
+
+export async function getAdminBookAudioUnits(
+  bookId: string,
+  mode: string = "pareto"
+): Promise<AdminBookAudioUnitsResponse> {
+  return adminFetch<AdminBookAudioUnitsResponse>(`/books/${bookId}/audio-units?mode=${mode}`);
+}
+
+export async function updateAdminBookMetadata(
+  bookId: string,
+  payload: AdminBookUpdateMetadataPayload
+): Promise<AdminBookDetailResponse> {
+  return adminFetch<AdminBookDetailResponse>(`/books/${bookId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAdminBookSummary(bookId: string): Promise<AdminBookSummaryResponse> {
+  return adminFetch<AdminBookSummaryResponse>(`/books/${bookId}/summary`);
+}
+
+export async function regenerateAdminBookSummary(
+  bookId: string
+): Promise<{ message: string; status: string }> {
+  return adminFetch<{ message: string; status: string }>(`/books/${bookId}/summary/regenerate`, {
+    method: "POST",
+  });
+}
+
+export type AdminBookUploadResponse = {
+  book_id: string;
+  job_id: string;
+  message: string;
+};
+
+export type AdminCancelJobResponse = {
+  job_id: string;
+  status: string;
+  message: string;
+  rolled_back: boolean;
+};
+
+export async function adminUploadBook(file: File): Promise<AdminBookUploadResponse> {
+  const formData = new FormData();
+  formData.append("file", file);
+  return adminFetch<AdminBookUploadResponse>("/books/upload", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function getAdminJobById(jobId: string): Promise<AdminJobListItem> {
+  return adminFetch<AdminJobListItem>(`/jobs/${jobId}`);
+}
+
+export async function cancelAdminJob(jobId: string): Promise<AdminCancelJobResponse> {
+  return adminFetch<AdminCancelJobResponse>(`/jobs/${jobId}/cancel`, {
+    method: "POST",
+  });
 }

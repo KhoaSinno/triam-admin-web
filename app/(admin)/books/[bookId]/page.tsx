@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
@@ -11,8 +11,14 @@ import {
   getBookSectionDetail, 
   getBookJobs,
   exportBookJson,
+  getAdminBookAudioUnits,
+  updateAdminBookMetadata,
+  regenerateAdminBookSummary,
   AdminBookSectionListItem,
-  AdminJobListItem
+  AdminJobListItem,
+  AdminBookAudioUnitsResponse,
+  AdminLearningUnitItem,
+  AdminSegmentItem,
 } from "@/lib/api";
 import { formatDate, formatDateShort, truncateId, getInitials } from "@/lib/utils";
 import {
@@ -25,15 +31,28 @@ import {
   RefreshCw,
   AlertTriangle,
   Play,
+  Pause,
   Copy,
   Clock,
   Coins,
   History,
   LayoutGrid,
   ChevronRight,
+  ChevronDown,
   Database,
   FileText,
   User,
+  Headphones,
+  Edit3,
+  Sparkles,
+  Volume2,
+  VolumeX,
+  Download,
+  RotateCw,
+  CheckCircle2,
+  XCircle,
+  Globe,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -44,7 +63,7 @@ export default function BookDetailPage() {
   const bookId = params.bookId as string;
 
   // Active Tab state
-  const [activeTab, setActiveTab] = useState<"overview" | "sections" | "jobs">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "sections" | "audio" | "jobs">("overview");
 
   // Selected outline section ID for Tab 2
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
@@ -54,8 +73,29 @@ export default function BookDetailPage() {
   const [retryJobId, setRetryJobId] = useState<string | null>(null);
 
   // Outline display mode filter & export state
-  const [outlineModeFilter, setOutlineModeFilter] = useState<"all" | "full" | "pareto">("all");
+  const [outlineModeFilter, setOutlineModeFilter] = useState<"full" | "pareto">("full");
   const [isExporting, setIsExporting] = useState(false);
+
+  // Metadata edit modal state
+  const [showEditMetadataModal, setShowEditMetadataModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editAuthor, setEditAuthor] = useState("");
+  const [editIsShared, setEditIsShared] = useState(false);
+
+  // Audio Tab state
+  const [audioMode, setAudioMode] = useState<"pareto" | "full">("pareto");
+  const [expandedUnitId, setExpandedUnitId] = useState<string | null>(null);
+  const [activeAudioUrl, setActiveAudioUrl] = useState<string | null>(null);
+  const [activeAudioTitle, setActiveAudioTitle] = useState<string>("");
+  const [activeAudioScript, setActiveAudioScript] = useState<string>("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState<number>(1.0);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [volume, setVolume] = useState<number>(1.0);
+  const [isMuted, setIsMuted] = useState(false);
+
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Query 1: Fetch Book detail & Owner Info
   const {
@@ -102,6 +142,31 @@ export default function BookDetailPage() {
     enabled: activeTab === "jobs",
   });
 
+  // Query 5: Fetch Audio units and segments (Tab 4)
+  const {
+    data: audioUnitsData,
+    isLoading: isAudioUnitsLoading,
+    refetch: refetchAudioUnits,
+  } = useQuery<AdminBookAudioUnitsResponse>({
+    queryKey: ["adminBookAudioUnits", bookId, audioMode],
+    queryFn: () => getAdminBookAudioUnits(bookId, audioMode),
+    enabled: activeTab === "audio",
+  });
+
+  // Mutation: Update book metadata
+  const updateMetadataMutation = useMutation({
+    mutationFn: (payload: { title?: string; author?: string; is_shared?: boolean }) =>
+      updateAdminBookMetadata(bookId, payload),
+    onSuccess: () => {
+      toast.success("Đã cập nhật thông tin sách thành công!");
+      queryClient.invalidateQueries({ queryKey: ["adminBookDetail", bookId] });
+      setShowEditMetadataModal(false);
+    },
+    onError: (err) => {
+      toast.error("Lỗi cập nhật sách: " + getErrorMessage(err));
+    },
+  });
+
   // Mutation: Trigger retry for failed jobs
   const retryMutation = useMutation({
     mutationFn: (jobId: string) =>
@@ -117,6 +182,125 @@ export default function BookDetailPage() {
     },
   });
 
+  // Mutation: Regenerate AI Summary
+  const regenerateSummaryMutation = useMutation({
+    mutationFn: () => regenerateAdminBookSummary(bookId),
+    onSuccess: (data) => {
+      toast.success(data.message || "Đã gửi yêu cầu sinh lại tóm tắt AI dưới nền!");
+      queryClient.invalidateQueries({ queryKey: ["adminBookDetail", bookId] });
+    },
+    onError: (err) => {
+      toast.error("Lỗi tạo lại tóm tắt AI: " + getErrorMessage(err));
+    },
+  });
+
+  // HTML5 Audio Event Listeners
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
+    const handleLoadedMetadata = () => setDuration(audio.duration || 0);
+    const handleEnded = () => setIsPlaying(false);
+
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("ended", handleEnded);
+
+    return () => {
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("ended", handleEnded);
+    };
+  }, [activeAudioUrl]);
+
+  // Audio Control Handlers
+  const handlePlayAudio = (url: string, title: string, scriptText: string) => {
+    if (!url) {
+      toast.error("File audio chưa được sinh hoặc bị thiếu đường dẫn URL.");
+      return;
+    }
+    setActiveAudioUrl(url);
+    setActiveAudioTitle(title);
+    setActiveAudioScript(scriptText || "Không có kịch bản văn bản.");
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = url;
+      audioRef.current.playbackRate = playbackRate;
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((e) => {
+            if (e.name === "AbortError") return;
+            console.warn("Audio play error:", e);
+            setIsPlaying(false);
+          });
+      }
+    } else {
+      setIsPlaying(true);
+    }
+  };
+
+  const togglePlayPause = () => {
+    if (!audioRef.current || !activeAudioUrl) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+          })
+          .catch((e) => {
+            if (e.name === "AbortError") return;
+            console.warn("Audio play error:", e);
+            setIsPlaying(false);
+          });
+      }
+    }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = parseFloat(e.target.value);
+    setCurrentTime(newTime);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+    }
+  };
+
+  const handleSpeedChange = (speed: number) => {
+    setPlaybackRate(speed);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = speed;
+    }
+  };
+
+  const handleVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVol = parseFloat(e.target.value);
+    setVolume(newVol);
+    if (audioRef.current) {
+      audioRef.current.volume = newVol;
+      setIsMuted(newVol === 0);
+    }
+  };
+
+  const toggleMute = () => {
+    if (!audioRef.current) return;
+    if (isMuted) {
+      audioRef.current.volume = volume || 1;
+      setIsMuted(false);
+    } else {
+      audioRef.current.volume = 0;
+      setIsMuted(true);
+    }
+  };
+
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`Đã sao chép ${label}`);
@@ -131,6 +315,27 @@ export default function BookDetailPage() {
     if (retryJobId) {
       retryMutation.mutate(retryJobId);
     }
+  };
+
+  const openEditMetadataModal = () => {
+    if (!book) return;
+    setEditTitle(book.title || "");
+    setEditAuthor(book.author || "");
+    setEditIsShared(!!book.is_shared);
+    setShowEditMetadataModal(true);
+  };
+
+  const handleSaveMetadata = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTitle.trim()) {
+      toast.error("Tên sách không được để trống!");
+      return;
+    }
+    updateMetadataMutation.mutate({
+      title: editTitle.trim(),
+      author: editAuthor.trim(),
+      is_shared: editIsShared,
+    });
   };
 
   const handleExportJson = async () => {
@@ -156,10 +361,19 @@ export default function BookDetailPage() {
     }
   };
 
+  const formatSecondsToTime = (secs: number) => {
+    if (isNaN(secs) || secs < 0) return "00:00";
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const hasFullMode = sections.some((s) => s.modes.includes("full"));
+
   const filteredSections = sections.filter((sec) => {
     if (outlineModeFilter === "all") return true;
     if (outlineModeFilter === "full") {
-      return sec.modes.includes("full") || sec.modes.length === 0;
+      return hasFullMode ? sec.modes.includes("full") : true;
     }
     if (outlineModeFilter === "pareto") {
       return sec.modes.includes("pareto");
@@ -210,13 +424,16 @@ export default function BookDetailPage() {
       error: "text-rose-400 border-rose-500/20 bg-rose-500/10",
       cancelled: "text-amber-400 border-amber-500/20 bg-amber-500/10",
       queued: "text-zinc-450 border-zinc-800 bg-zinc-900/10",
+      completed: "text-emerald-400 border-emerald-500/20 bg-emerald-500/10",
+      pending: "text-amber-400 border-amber-500/20 bg-amber-500/10",
+      failed: "text-rose-400 border-rose-500/20 bg-rose-500/10",
     };
     return colors[statusVal] || "text-zinc-400 border-zinc-850 bg-zinc-500/10";
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300 relative text-sm">
-      {/* Back / Refresh Action Bar */}
+    <div className="space-y-6 animate-in fade-in duration-300 relative text-sm pb-10">
+      {/* Back / Refresh / Actions Bar */}
       <div className="flex items-center justify-between">
         <button
           onClick={() => router.push("/books")}
@@ -227,27 +444,38 @@ export default function BookDetailPage() {
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Edit Metadata Button */}
+          <button
+            onClick={openEditMetadataModal}
+            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95"
+          >
+            <Edit3 className="h-3.5 w-3.5 text-violet-400" />
+            Sửa Metadata
+          </button>
+
           {/* Export JSON Button */}
           <button
             onClick={handleExportJson}
             disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
           >
             <Database className={`h-3.5 w-3.5 ${isExporting ? "animate-pulse" : ""}`} />
             {isExporting ? "Đang xuất JSON..." : "Xuất JSON"}
           </button>
 
+          {/* Refresh Button */}
           <button
             onClick={() => {
               refetchBook();
               if (activeTab === "sections") refetchSections();
               if (activeTab === "jobs") refetchJobs();
+              if (activeTab === "audio") refetchAudioUnits();
             }}
             disabled={isBookRefetching}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isBookRefetching ? "animate-spin" : ""}`} />
-            Làm mới dữ liệu
+            Làm mới
           </button>
         </div>
       </div>
@@ -255,10 +483,23 @@ export default function BookDetailPage() {
       {/* Book Basic Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-850 pb-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-            {book.title}
-          </h1>
-          <p className="mt-1.5 text-zinc-450 text-xs">Tác giả: <span className="text-zinc-300 font-semibold">{book.author || "Không rõ"}</span></p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              {book.title}
+            </h1>
+            {book.is_shared ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-400 uppercase">
+                <Globe className="h-3 w-3" /> Thư viện Mẫu
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-zinc-800/60 border border-zinc-700/40 px-2.5 py-0.5 text-[10px] font-bold text-zinc-400 uppercase">
+                <Lock className="h-3 w-3" /> Cá nhân
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-zinc-450 text-xs">
+            Tác giả: <span className="text-zinc-300 font-semibold">{book.author || "Không rõ"}</span>
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -272,11 +513,12 @@ export default function BookDetailPage() {
         </div>
       </div>
 
-      {/* Modern Tabs Selector */}
-      <div className="flex gap-2 border-b border-zinc-800 pb-px">
+      {/* 4 Tabs Selector */}
+      <div className="flex flex-wrap gap-2 border-b border-zinc-800 pb-px">
         {[
           { id: "overview", name: "Tổng quan & Sở hữu", icon: LayoutGrid },
           { id: "sections", name: "Cấu trúc mục lục & Vector", icon: Database },
+          { id: "audio", name: "Âm thanh & Bài học", icon: Headphones },
           { id: "jobs", name: "Lịch sử xử lý sách", icon: History },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -298,15 +540,25 @@ export default function BookDetailPage() {
         })}
       </div>
 
-      {/* Tab Contents */}
+      {/* TAB 1: OVERVIEW & AI SUMMARY */}
       {activeTab === "overview" && (
         <div className="grid gap-6 md:grid-cols-3">
-          {/* Metadata Card */}
+          {/* Metadata & AI Summary */}
           <div className="md:col-span-2 space-y-6">
+            {/* Metadata Card */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-5">
-              <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
-                <Info className="h-4.5 w-4.5 text-violet-400" />
-                <h2 className="text-sm font-bold text-white uppercase tracking-wider">Thông tin tài liệu</h2>
+              <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <Info className="h-4.5 w-4.5 text-violet-400" />
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">Thông tin tài liệu</h2>
+                </div>
+                <button
+                  onClick={openEditMetadataModal}
+                  className="text-xs font-semibold text-violet-400 hover:text-violet-300 flex items-center gap-1"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  Chỉnh sửa
+                </button>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2 text-xs">
@@ -337,13 +589,78 @@ export default function BookDetailPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <span className="text-zinc-550 font-bold uppercase tracking-wider block">Cập nhật lần cuối</span>
+                  <span className="text-zinc-500 font-bold uppercase tracking-wider block">Cập nhật lần cuối</span>
                   <div className="flex items-center gap-1.5 text-zinc-300 py-1">
                     <Calendar className="h-4 w-4 text-zinc-550" />
                     <span className="font-semibold">{formatDate(book.updated_at)}</span>
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* AI Summary Card (NEW FEATURE) */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4.5 w-4.5 text-amber-400" />
+                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">Tóm tắt AI (Executive Summary)</h2>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-[9px] font-extrabold uppercase ${getStatusColor(book.ai_summary_status || "pending")}`}>
+                    {book.ai_summary_status || "pending"}
+                  </span>
+                  <button
+                    onClick={() => regenerateSummaryMutation.mutate()}
+                    disabled={regenerateSummaryMutation.isPending || book.ai_summary_status === "processing"}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all disabled:opacity-40"
+                  >
+                    <RotateCw className={`h-3.5 w-3.5 ${regenerateSummaryMutation.isPending || book.ai_summary_status === "processing" ? "animate-spin" : ""}`} />
+                    Tạo lại tóm tắt AI
+                  </button>
+                </div>
+              </div>
+
+              {book.ai_summary_status === "processing" || book.ai_summary_status === "pending" ? (
+                <div className="py-8 flex flex-col items-center justify-center text-center space-y-3 bg-zinc-950/40 rounded-xl border border-zinc-850">
+                  <RotateCw className="h-7 w-7 text-amber-400 animate-spin" />
+                  <p className="text-xs font-semibold text-zinc-300">
+                    Hệ thống AI Gemini đang tổng hợp tóm tắt nội dung cuốn sách...
+                  </p>
+                  <p className="text-[10px] text-zinc-500">Tiến trình chạy ngầm qua Celery task.</p>
+                </div>
+              ) : book.ai_summary_status === "failed" ? (
+                <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-bold">
+                    <AlertTriangle className="h-4 w-4 text-rose-400" />
+                    Không thể tạo tóm tắt AI
+                  </div>
+                  <p className="text-[11px] leading-relaxed">{book.ai_summary_error || "Đã xảy ra lỗi trong quá trình xử lý LLM."}</p>
+                </div>
+              ) : book.ai_summary ? (
+                <div className="space-y-4">
+                  {book.ai_summary.summary && (
+                    <div className="bg-zinc-950/60 border border-zinc-850 p-4 rounded-xl">
+                      <h4 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2">Tóm tắt tổng quan</h4>
+                      <p className="text-xs text-zinc-200 leading-relaxed font-sans">{book.ai_summary.summary}</p>
+                    </div>
+                  )}
+
+                  {book.ai_summary.key_takeaways && Array.isArray(book.ai_summary.key_takeaways) && (
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Thông điệp & Bài học trọng tâm</h4>
+                      <ul className="space-y-1.5 pl-4 list-disc text-xs text-zinc-300">
+                        {book.ai_summary.key_takeaways.map((item: string, idx: number) => (
+                          <li key={idx} className="leading-relaxed">{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-xs text-zinc-500 italic bg-zinc-950/20 border border-zinc-850 rounded-xl">
+                  Sách chưa có dữ liệu tóm tắt AI. Bấm "Tạo lại tóm tắt AI" để tiến hành tổng hợp.
+                </div>
+              )}
             </div>
 
             {/* Structure Summary Card */}
@@ -355,44 +672,22 @@ export default function BookDetailPage() {
 
               <div className="grid gap-4 sm:grid-cols-3 text-center">
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Tổng số Chương</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng số Chương</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.total_sections !== null ? book.total_sections : "—"}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-555 font-bold uppercase tracking-wider block">Tổng số Units</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng số Units</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.total_units !== null ? book.total_units : "—"}
                   </span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-xl">
-                  <span className="text-[10px] text-zinc-550 font-bold uppercase tracking-wider block">Tổng Phân đoạn</span>
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider block">Tổng Phân đoạn</span>
                   <span className="text-2xl font-bold text-white mt-1 block font-mono">
                     {book.segment_count || 0}
                   </span>
-                </div>
-              </div>
-
-              {/* Units Status Breakdown */}
-              <div className="space-y-3 pt-2">
-                <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wide">
-                  Chi tiết trạng thái của các Learning Units
-                </h3>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {Object.keys(book.learning_units_by_status).length === 0 ? (
-                    <p className="text-xs text-zinc-500 col-span-full italic">Không có dữ liệu unit.</p>
-                  ) : (
-                    Object.entries(book.learning_units_by_status).map(([statusKey, val]) => (
-                      <div
-                        key={statusKey}
-                        className="flex items-center justify-between border border-zinc-850 bg-zinc-950 px-3.5 py-2.5 rounded-lg text-xs"
-                      >
-                        <span className="font-semibold text-zinc-400 capitalize">{statusKey}</span>
-                        <span className="font-bold text-white font-mono">{val}</span>
-                      </div>
-                    ))
-                  )}
                 </div>
               </div>
             </div>
@@ -452,7 +747,7 @@ export default function BookDetailPage() {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-zinc-550 uppercase tracking-wider">Đăng nhập cuối</span>
+                      <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Đăng nhập cuối</span>
                       <span className="text-zinc-300">{formatDateShort(book.owner_info.last_sign_in_at)}</span>
                     </div>
                   </div>
@@ -463,7 +758,7 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      {/* Tab 2: Book Outline & Embedding Vector Chunks */}
+      {/* TAB 2: OUTLINE & VECTOR CHUNKS */}
       {activeTab === "sections" && (
         <div className="grid gap-6 md:grid-cols-3">
           {/* Left: Outline tree */}
@@ -478,9 +773,8 @@ export default function BookDetailPage() {
               <label className="text-[9px] text-zinc-550 font-bold uppercase tracking-wide block mb-1">
                 Chế độ hiển thị mục lục
               </label>
-              <div className="grid grid-cols-3 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
+              <div className="grid grid-cols-2 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
                 {[
-                  { value: "all", label: "Tất cả" },
                   { value: "full", label: "Đầy đủ" },
                   { value: "pareto", label: "Tinh gọn" }
                 ].map((modeOpt) => (
@@ -488,7 +782,7 @@ export default function BookDetailPage() {
                     key={modeOpt.value}
                     onClick={() => {
                       setOutlineModeFilter(modeOpt.value as any);
-                      setSelectedSectionId(null); // Clear selected section on mode filter change
+                      setSelectedSectionId(null);
                     }}
                     className={`py-1.5 text-[9px] font-bold rounded-md transition-all ${
                       outlineModeFilter === modeOpt.value
@@ -508,12 +802,19 @@ export default function BookDetailPage() {
               </div>
             ) : filteredSections.length === 0 ? (
               <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 italic text-center px-4">
-                Không tìm thấy mục lục nào khớp với bộ lọc chế độ hiển thị này.
+                Không tìm thấy mục lục nào trong cuốn sách này.
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-1 space-y-1 scrollbar-thin">
                 {filteredSections.map((sec) => {
                   const isSelected = selectedSectionId === sec.id;
+                  const isIncluded =
+                    outlineModeFilter === "pareto"
+                      ? sec.modes.includes("pareto")
+                      : hasFullMode
+                      ? sec.modes.includes("full")
+                      : true;
+
                   return (
                     <button
                       key={sec.id}
@@ -527,8 +828,19 @@ export default function BookDetailPage() {
                     >
                       <ChevronRight className={`h-3.5 w-3.5 mt-0.5 shrink-0 transition-transform ${isSelected ? "rotate-90 text-violet-400" : "text-zinc-600 group-hover:text-zinc-400"}`} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate leading-tight">{sec.title}</p>
-                        <p className="text-[9px] text-zinc-555 mt-1 font-mono font-semibold">
+                        <div className="flex items-center justify-between gap-1">
+                          <p className="truncate leading-tight font-medium">{sec.title}</p>
+                          {isIncluded ? (
+                            <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              Đã có
+                            </span>
+                          ) : (
+                            <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                              Chưa có
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[9px] text-zinc-550 mt-1 font-mono font-semibold">
                           Idx: {sec.section_index} · {sec.text_char_count.toLocaleString()} ký tự · {sec.chunk_count} chunks
                         </p>
                       </div>
@@ -602,7 +914,7 @@ export default function BookDetailPage() {
                             </div>
                           </div>
 
-                          <p className="text-xs text-zinc-355 leading-relaxed italic bg-zinc-955 p-3 rounded-lg border border-zinc-900 select-all max-h-24 overflow-y-auto scrollbar-thin">
+                          <p className="text-xs text-zinc-350 leading-relaxed italic bg-zinc-950/80 p-3 rounded-lg border border-zinc-900 select-all max-h-24 overflow-y-auto scrollbar-thin">
                             "{chunk.content}"
                           </p>
 
@@ -621,7 +933,272 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      {/* Tab 3: All Historical Jobs */}
+      {/* TAB 3: AUDIO & LEARNING UNITS (NEW FEATURE) */}
+      {activeTab === "audio" && (
+        <div className="grid gap-6 md:grid-cols-3">
+          {/* Hidden HTML5 Audio Element */}
+          <audio ref={audioRef} className="hidden" />
+
+          {/* Left Column: Learning Units Accordion Tree */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-4 shadow-md backdrop-blur-xl h-[620px] flex flex-col">
+            <div className="flex items-center justify-between border-b border-zinc-850 pb-3 mb-3 shrink-0">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Headphones className="h-4 w-4 text-violet-400" />
+                Bài học & Audio ({audioUnitsData?.total_units || 0})
+              </h3>
+              {/* Mode Switcher: Pareto vs Full */}
+              <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-850">
+                <button
+                  onClick={() => setAudioMode("pareto")}
+                  className={`px-2.5 py-1 text-[9px] font-bold rounded-md transition-all ${
+                    audioMode === "pareto" ? "bg-violet-600 text-white" : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  PARETO
+                </button>
+                <button
+                  onClick={() => setAudioMode("full")}
+                  className={`px-2.5 py-1 text-[9px] font-bold rounded-md transition-all ${
+                    audioMode === "full" ? "bg-violet-600 text-white" : "text-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  FULL
+                </button>
+              </div>
+            </div>
+
+            {isAudioUnitsLoading ? (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-500 border-t-transparent"></div>
+              </div>
+            ) : !audioUnitsData || audioUnitsData.units.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 italic text-center px-4">
+                Chưa có dữ liệu bài học âm thanh nào được sinh cho chế độ {audioMode.toUpperCase()}.
+              </div>
+            ) : (
+              <div className="flex-1 overflow-y-auto pr-1 space-y-2 scrollbar-thin">
+                {audioUnitsData.units.map((unit) => {
+                  const isExpanded = expandedUnitId === unit.id;
+                  return (
+                    <div
+                      key={unit.id}
+                      className="rounded-xl border border-zinc-850 bg-zinc-950/60 overflow-hidden transition-all"
+                    >
+                      {/* Unit Header */}
+                      <button
+                        onClick={() => setExpandedUnitId(isExpanded ? null : unit.id)}
+                        className="w-full text-left p-3 flex items-center justify-between hover:bg-zinc-900/40 transition-colors"
+                      >
+                        <div className="min-w-0 flex-1 pr-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-bold text-violet-400">
+                              BÀI {unit.unit_index + 1}
+                            </span>
+                            <span className={`inline-flex items-center rounded-sm px-1.5 py-0.5 text-[8px] font-extrabold uppercase border ${getStatusColor(unit.status)}`}>
+                              {unit.status}
+                            </span>
+                          </div>
+                          <p className="text-xs font-bold text-zinc-200 truncate mt-1">{unit.title}</p>
+                          <div className="flex items-center gap-3 text-[9px] text-zinc-500 mt-1 font-mono">
+                            <span>{Math.round(unit.estimated_audio_seconds / 60)} phút</span>
+                            <span>·</span>
+                            <span>{unit.segments.length} segments</span>
+                          </div>
+                        </div>
+
+                        {isExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-zinc-500 shrink-0" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-zinc-500 shrink-0" />
+                        )}
+                      </button>
+
+                      {/* Unit Segments List */}
+                      {isExpanded && (
+                        <div className="border-t border-zinc-900 bg-zinc-950 p-2 space-y-1.5">
+                          {/* Unit Review Audio if available */}
+                          {unit.review_audio_url && (
+                            <button
+                              onClick={() => handlePlayAudio(unit.review_audio_url!, `Bài ${unit.unit_index + 1}: Tóm tắt ôn tập`, unit.review_text || "")}
+                              className="w-full text-left p-2 rounded-lg bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 transition-all flex items-center justify-between group"
+                            >
+                              <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                                <Play className="h-3.5 w-3.5 fill-amber-400" />
+                                Ôn tập tổng kết
+                              </div>
+                              <span className="text-[9px] font-mono text-amber-400">REVIEW AUDIO</span>
+                            </button>
+                          )}
+
+                          {unit.segments.length === 0 ? (
+                            <p className="text-[10px] text-zinc-600 italic p-2 text-center">Chưa có đoạn audio segment.</p>
+                          ) : (
+                            unit.segments.map((seg) => {
+                              const isCurrentPlaying = activeAudioUrl === seg.audio_url && isPlaying;
+                              return (
+                                <button
+                                  key={seg.id}
+                                  onClick={() => handlePlayAudio(seg.audio_url!, `Bài ${unit.unit_index + 1} - Phân đoạn ${seg.segment_index + 1}`, seg.text_content || "")}
+                                  disabled={!seg.audio_url}
+                                  className={`w-full text-left p-2 rounded-lg text-xs transition-all flex items-center justify-between group ${
+                                    isCurrentPlaying
+                                      ? "bg-violet-600/20 text-violet-300 font-bold border border-violet-500/30"
+                                      : seg.audio_url
+                                      ? "bg-zinc-900/30 hover:bg-zinc-800/40 text-zinc-300 border border-transparent"
+                                      : "bg-zinc-950 text-zinc-600 opacity-50 cursor-not-allowed border border-transparent"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    {isCurrentPlaying ? (
+                                      <Pause className="h-3.5 w-3.5 text-violet-400 shrink-0" />
+                                    ) : (
+                                      <Play className="h-3.5 w-3.5 text-zinc-500 group-hover:text-violet-400 shrink-0" />
+                                    )}
+                                    <span className="truncate">Đoạn {seg.segment_index + 1}</span>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 text-[9px] font-mono shrink-0">
+                                    {seg.duration_ms && (
+                                      <span className="text-zinc-500">{formatSecondsToTime(seg.duration_ms / 1000)}</span>
+                                    )}
+                                    <span className={`px-1 rounded ${seg.audio_url ? "text-emerald-400 bg-emerald-500/10" : "text-rose-400 bg-rose-500/10"}`}>
+                                      {seg.audio_url ? "AUDIO" : "NO AUDIO"}
+                                    </span>
+                                  </div>
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: Built-in Custom Audio Player & Interactive Transcript */}
+          <div className="md:col-span-2 space-y-6">
+            {/* Audio Player Box */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-5">
+              <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                <div className="flex items-center gap-2">
+                  <Headphones className="h-4.5 w-4.5 text-violet-400" />
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Trình phát thanh Admin (Audio Player)</h3>
+                </div>
+                {activeAudioUrl && (
+                  <a
+                    href={activeAudioUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] font-mono font-bold text-violet-400 hover:underline flex items-center gap-1"
+                  >
+                    <Download className="h-3 w-3" /> Tải file .mp3
+                  </a>
+                )}
+              </div>
+
+              {!activeAudioUrl ? (
+                <div className="py-10 text-center text-xs text-zinc-500 italic bg-zinc-950/40 rounded-xl border border-zinc-850 flex flex-col items-center justify-center space-y-2">
+                  <Headphones className="h-8 w-8 text-zinc-700 animate-pulse" />
+                  <span>Vui lòng chọn một phân đoạn bài học ở cột bên trái để nghe thử audio.</span>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Track Title */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold text-white truncate">{activeAudioTitle}</p>
+                    <span className="text-xs font-mono font-bold text-violet-400">
+                      {formatSecondsToTime(currentTime)} / {formatSecondsToTime(duration)}
+                    </span>
+                  </div>
+
+                  {/* Seek Bar */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={duration || 100}
+                    value={currentTime}
+                    onChange={handleSeek}
+                    className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                  />
+
+                  {/* Player Controls Bar */}
+                  <div className="flex flex-wrap items-center justify-between gap-4 bg-zinc-950 p-4 rounded-xl border border-zinc-850">
+                    {/* Play/Pause Button */}
+                    <button
+                      onClick={togglePlayPause}
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600 hover:bg-violet-500 text-white shadow-lg transition-all active:scale-95"
+                    >
+                      {isPlaying ? <Pause className="h-5 w-5 fill-white" /> : <Play className="h-5 w-5 fill-white ml-0.5" />}
+                    </button>
+
+                    {/* Speed Selector */}
+                    <div className="flex items-center gap-1 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+                      {[0.75, 1.0, 1.25, 1.5, 2.0].map((spd) => (
+                        <button
+                          key={spd}
+                          onClick={() => handleSpeedChange(spd)}
+                          className={`px-2 py-1 text-[10px] font-mono font-bold rounded ${
+                            playbackRate === spd ? "bg-violet-600 text-white" : "text-zinc-400 hover:text-white"
+                          }`}
+                        >
+                          {spd}x
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Volume Control */}
+                    <div className="flex items-center gap-2">
+                      <button onClick={toggleMute} className="text-zinc-400 hover:text-white">
+                        {isMuted ? <VolumeX className="h-4 w-4 text-rose-400" /> : <Volume2 className="h-4 w-4" />}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={isMuted ? 0 : volume}
+                        onChange={handleVolumeChange}
+                        className="w-20 h-1 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-violet-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Transcript Panel */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-violet-400" />
+                  Kịch bản đọc / Lời nói (Transcript Script)
+                </h3>
+                {activeAudioScript && (
+                  <button
+                    onClick={() => handleCopy(activeAudioScript, "Kịch bản đọc")}
+                    className="p-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition flex items-center gap-1 text-[10px]"
+                  >
+                    <Copy className="h-3 w-3" /> Sao chép lời đọc
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <textarea
+                  readOnly
+                  value={activeAudioScript || "Vui lòng chọn một phân đoạn audio để xem kịch bản đọc tương ứng."}
+                  className="w-full h-44 rounded-xl bg-zinc-950/60 border border-zinc-850 p-4 font-sans text-xs text-zinc-300 leading-relaxed outline-none resize-none scrollbar-thin"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: HISTORICAL JOBS */}
       {activeTab === "jobs" && (
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-6 shadow-md backdrop-blur-xl space-y-5">
           <div className="flex items-center gap-2 border-b border-zinc-850 pb-3">
@@ -732,7 +1309,87 @@ export default function BookDetailPage() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* EDIT METADATA MODAL */}
+      {showEditMetadataModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
+          <form
+            onSubmit={handleSaveMetadata}
+            className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit3 className="h-4 w-4 text-violet-400" />
+                Chỉnh sửa Thông tin Sách
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowEditMetadataModal(false)}
+                className="text-zinc-500 hover:text-white text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="text-zinc-400 font-semibold block mb-1">Tên cuốn sách *</label>
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-200 font-semibold outline-none focus:border-violet-500"
+                  placeholder="Nhập tên sách..."
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-zinc-400 font-semibold block mb-1">Tác giả</label>
+                <input
+                  type="text"
+                  value={editAuthor}
+                  onChange={(e) => setEditAuthor(e.target.value)}
+                  className="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-zinc-200 font-semibold outline-none focus:border-violet-500"
+                  placeholder="Nhập tên tác giả..."
+                />
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <div>
+                  <p className="font-semibold text-zinc-200">Thư viện Mẫu (Shared)</p>
+                  <p className="text-[10px] text-zinc-500">Công khai cuốn sách này cho tất cả người dùng chọn dùng mẫu.</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={editIsShared}
+                  onChange={(e) => setEditIsShared(e.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-800 bg-zinc-950 accent-violet-600 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3 pt-3 border-t border-zinc-850">
+              <button
+                type="button"
+                onClick={() => setShowEditMetadataModal(false)}
+                className="rounded-xl border border-zinc-850 bg-zinc-950 text-zinc-300 font-semibold py-2 px-4 text-xs hover:bg-zinc-850 hover:text-white"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="submit"
+                disabled={updateMetadataMutation.isPending}
+                className="rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold py-2 px-4 text-xs transition-all flex items-center gap-1"
+              >
+                {updateMetadataMutation.isPending && <RefreshCw className="h-3 w-3 animate-spin" />}
+                Lưu thay đổi
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* JOB RETRY CONFIRMATION MODAL */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
           <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl">

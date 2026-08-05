@@ -19,6 +19,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import ThemeToggle from "@/components/theme-toggle";
 import BrandLogo from "@/components/brand-logo";
+import { AdminGlobalProgressWidget } from "@/components/AdminGlobalProgressWidget";
 import {
   adminFetch,
   AdminDashboardResponse,
@@ -300,6 +301,7 @@ export default function AdminLayout({
           {children}
         </main>
       </div>
+      <AdminGlobalProgressWidget />
     </div>
   );
 }

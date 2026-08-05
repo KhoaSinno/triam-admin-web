@@ -1,5 +1,10 @@
 allowBuilds:
-  '@firebase/util': false
-  protobufjs: false
+  core-js: true
+  es5-ext: true
   sharp: true
   unrs-resolver: true
+onlyBuiltDependencies:
+  - core-js
+  - es5-ext
+  - sharp
+  - unrs-resolver

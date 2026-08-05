@@ -11,6 +11,8 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
     "@tanstack/react-query": "^5.100.14",
+    "docx-preview": "^0.4.0",
+    "epubjs": "^0.3.93",
     "firebase-admin": "^14.1.0",
     "lucide-react": "^1.17.0",
     "next": "16.2.7",
@@ -27,5 +29,9 @@
     "eslint-config-next": "16.2.7",
     "tailwindcss": "^4",
     "typescript": "^5"
-  }
+  },
+  "onlyBuiltDependencies": [
+    "core-js",
+    "es5-ext"
+  ]
 }

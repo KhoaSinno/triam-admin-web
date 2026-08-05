@@ -154,6 +154,7 @@ export type AdminBookSectionDetailResponse = {
 };
 
 export type AdminBookDetailResponse = AdminBookListItem & {
+  file_url?: string | null;
   latest_job: AdminJobListItem | null;
   learning_units_by_status: Record<string, number>;
   segment_count: number;

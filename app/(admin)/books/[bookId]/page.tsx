@@ -53,8 +53,13 @@ import {
   XCircle,
   Globe,
   Lock,
+  Eye,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
+import PdfViewer from "@/components/book-preview/pdf-viewer";
+import DocxViewer from "@/components/book-preview/docx-viewer";
+import EpubViewer from "@/components/book-preview/epub-viewer";
 
 export default function BookDetailPage() {
   const params = useParams();
@@ -63,7 +68,7 @@ export default function BookDetailPage() {
   const bookId = params.bookId as string;
 
   // Active Tab state
-  const [activeTab, setActiveTab] = useState<"overview" | "sections" | "audio" | "jobs">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "sections" | "audio" | "jobs" | "preview">("overview");
 
   // Selected outline section ID for Tab 2
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
@@ -371,7 +376,6 @@ export default function BookDetailPage() {
   const hasFullMode = sections.some((s) => s.modes.includes("full"));
 
   const filteredSections = sections.filter((sec) => {
-    if (outlineModeFilter === "all") return true;
     if (outlineModeFilter === "full") {
       return hasFullMode ? sec.modes.includes("full") : true;
     }
@@ -520,6 +524,7 @@ export default function BookDetailPage() {
           { id: "sections", name: "Cấu trúc mục lục & Vector", icon: Database },
           { id: "audio", name: "Âm thanh & Bài học", icon: Headphones },
           { id: "jobs", name: "Lịch sử xử lý sách", icon: History },
+          { id: "preview", name: "Đọc & Preview sách", icon: Eye },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
@@ -1304,6 +1309,43 @@ export default function BookDetailPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: FILE PREVIEW */}
+      {activeTab === "preview" && (
+        <div className="space-y-4">
+          {book.file_url ? (
+            <>
+              {book.document_type === "pdf" && <PdfViewer fileUrl={book.file_url} title={book.title} />}
+              {book.document_type === "epub" && <EpubViewer fileUrl={book.file_url} title={book.title} />}
+              {book.document_type === "docx" && <DocxViewer fileUrl={book.file_url} title={book.title} />}
+              {!["pdf", "epub", "docx"].includes(book.document_type?.toLowerCase() || "") && (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-8 text-center space-y-4">
+                  <FileCode className="h-10 w-10 text-amber-400 mx-auto" />
+                  <div>
+                    <p className="text-sm font-bold text-zinc-200">Định dạng file không hỗ trợ preview trực tiếp ({book.document_type})</p>
+                    <p className="text-xs text-zinc-500 mt-1">Bạn có thể tải file gốc về máy hoặc mở trong tab mới.</p>
+                  </div>
+                  <a
+                    href={book.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-violet-600 hover:bg-violet-500 text-white transition-all shadow-md"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Mở file trong tab mới
+                  </a>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-8 text-center space-y-3">
+              <AlertTriangle className="h-10 w-10 text-amber-400 mx-auto" />
+              <p className="text-sm font-bold text-zinc-200">Không tìm thấy file gốc của cuốn sách này</p>
+              <p className="text-xs text-zinc-500">Có thể file đã bị xóa khỏi kho lưu trữ hoặc sách khởi tạo không thành công.</p>
             </div>
           )}
         </div>

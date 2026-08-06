@@ -172,7 +172,7 @@ export default function LoginPage() {
           <div className="mb-10 flex items-center gap-3 lg:hidden">
             <BrandLogo className="h-11 w-11" />
             <div>
-              <p className="font-black text-zinc-100">TriAm Admin</p>
+              <p className="font-black text-zinc-100">TRIAM Admin</p>
               <p className="text-xs text-zinc-500">Operations workspace</p>
             </div>
           </div>

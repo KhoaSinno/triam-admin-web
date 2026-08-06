@@ -8,10 +8,12 @@ export default function BrandLogo({
   label = "TriAm",
 }: BrandLogoProps) {
   return (
-    <span
-      role="img"
-      aria-label={label}
-      className={`triam-brand-mark inline-block shrink-0 ${className}`}
+    <img
+      src="/icon-192.png"
+      alt={label}
+      width={192}
+      height={192}
+      className={`shrink-0 object-contain ${className}`}
     />
   );
 }

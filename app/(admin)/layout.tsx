@@ -168,7 +168,7 @@ export default function AdminLayout({
           <Link href="/dashboard" className="flex items-center gap-2.5">
             <BrandLogo className="h-8 w-8" />
             <span className="font-bold tracking-tight text-white bg-gradient-to-r from-zinc-50 via-zinc-100 to-zinc-400 bg-clip-text text-transparent">
-              TriAm Admin
+              TRIAM Admin
             </span>
           </Link>
         </div>
@@ -235,7 +235,7 @@ export default function AdminLayout({
             >
               <BrandLogo className="h-8 w-8" />
               <span className="hidden text-sm font-extrabold text-zinc-100 sm:inline">
-                TriAm Admin
+                TRIAM Admin
               </span>
             </Link>
             <span

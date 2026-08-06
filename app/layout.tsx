@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TriAm Admin",
-  description: "Trang quản trị hệ thống TriAm",
+  title: "TRIAM Admin",
+  description: "Trang quản trị hệ thống TRIAM",
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",

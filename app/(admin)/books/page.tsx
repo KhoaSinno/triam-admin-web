@@ -307,7 +307,7 @@ function BooksContent() {
                       <div className="flex flex-col max-w-xs md:max-w-sm">
                         <span
                           onClick={() => router.push(`/books/${book.id}`)}
-                          className="font-bold text-zinc-200 hover:text-violet-400 transition-colors cursor-pointer truncate"
+                          className="font-bold text-zinc-200 hover:text-violet-400 transition-colors cursor-pointer line-clamp-2"
                           title={book.title}
                         >
                           {book.title}
@@ -367,7 +367,7 @@ function BooksContent() {
                         </span>
                         {book.status === "error" && book.error_message && (
                           <span
-                            className="text-[10px] text-red-400 max-w-xs truncate"
+                            className="max-w-xs text-[10px] text-red-400 line-clamp-2"
                             title={book.error_message}
                           >
                             {book.error_message}

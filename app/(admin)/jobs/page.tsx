@@ -165,7 +165,7 @@ function JobsContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl bg-gradient-to-r from-zinc-50 to-zinc-400 bg-clip-text text-transparent">
-            Tiến trình hệ thống (Jobs)
+            Tiến trình hệ thống
           </h1>
           <p className="mt-1.5 text-sm text-zinc-450">
             Giám sát các tác vụ xử lý tài liệu, nạp dữ liệu, chuyển đổi TTS và kiểm duyệt

@@ -381,7 +381,7 @@ function SystemBooksContent() {
               : "border-transparent text-zinc-450 hover:text-zinc-200"
           }`}
         >
-          Sách mẫu (Admin Upload)
+          Sách mẫu
         </button>
         <button
           onClick={() => { setActiveTab("shared"); setOffset(0); }}
@@ -391,7 +391,7 @@ function SystemBooksContent() {
               : "border-transparent text-zinc-450 hover:text-zinc-200"
           }`}
         >
-          Thư viện dùng chung (Shared Library)
+          Thư viện dùng chung
         </button>
         <button
           onClick={() => { setActiveTab("all"); setOffset(0); }}

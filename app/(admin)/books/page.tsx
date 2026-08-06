@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, Suspense } from "react";
-import { useQuery, useMutation, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { adminFetch, adminUploadBook, getErrorMessage, AdminBooksResponse, BookStatus, DocumentType } from "@/lib/api";
+import { adminFetch, AdminBooksResponse, BookStatus, DocumentType } from "@/lib/api";
 import { formatDateShort, truncateId, getPaginationRange, getInitials } from "@/lib/utils";
 import {
   BookOpen,
@@ -18,8 +18,6 @@ import {
   Eye,
   FileCode,
   Link2,
-  Upload,
-  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,10 +38,6 @@ function BooksContent() {
   const [userId, setUserId] = useState(initialUser);
   const [limit] = useState(20);
   const [offset, setOffset] = useState(0);
-
-  // Upload State
-  const [showUploadModal, setShowUploadModal] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Debounce search input (300ms)
   useEffect(() => {
@@ -80,21 +74,6 @@ function BooksContent() {
     queryKey: ["adminBooks", limit, offset, debouncedSearch, status, docType, userId],
     queryFn: () => adminFetch<AdminBooksResponse>(buildQueryPath()),
     placeholderData: keepPreviousData,
-  });
-
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => adminUploadBook(file),
-    onSuccess: (data) => {
-      toast.success("Tải sách thành công! Tiến trình bóc tách và sinh vector đang chạy ngầm ở góc màn hình.");
-      localStorage.setItem("triam_admin_active_job_id", data.job_id);
-      window.dispatchEvent(new Event("triam_admin_job_started"));
-      setShowUploadModal(false);
-      setSelectedFile(null);
-      refetch();
-    },
-    onError: (err) => {
-      toast.error("Không thể upload sách: " + getErrorMessage(err));
-    },
   });
 
   const handleResetFilters = () => {
@@ -169,14 +148,6 @@ function BooksContent() {
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowUploadModal(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-violet-500 active:scale-95 shadow-lg shadow-violet-600/20"
-          >
-            <Upload className="h-4 w-4" />
-            Upload book
-          </button>
-
           <button
             onClick={() => refetch()}
             disabled={isRefetching}
@@ -469,77 +440,6 @@ function BooksContent() {
         )}
       </div>
 
-      {/* Upload Modal */}
-      {showUploadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4 animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Upload className="h-5 w-5 text-violet-400" />
-                Upload Sách Mới (Hệ thống)
-              </h2>
-              <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setSelectedFile(null);
-                }}
-                className="p-1 text-zinc-500 hover:text-white rounded hover:bg-zinc-800"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-zinc-400">
-              Chọn file tài liệu sách mẫu dạng <span className="text-violet-400 font-bold">PDF, EPUB</span> hoặc <span className="text-violet-400 font-bold">DOCX</span>. Tiến trình bóc tách cấu trúc và tạo vector sẽ chạy ngầm không gây treo màn hình.
-            </p>
-
-            <div className="border-2 border-dashed border-zinc-800 hover:border-violet-500/50 rounded-xl p-6 text-center transition-all bg-zinc-950/50">
-              <input
-                type="file"
-                accept=".pdf,.epub,.docx"
-                id="admin-book-file-input"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files[0]) {
-                    setSelectedFile(e.target.files[0]);
-                  }
-                }}
-              />
-              <label htmlFor="admin-book-file-input" className="cursor-pointer space-y-2 block">
-                <BookOpen className="h-8 w-8 text-zinc-600 mx-auto" />
-                <span className="text-xs text-zinc-300 font-semibold block truncate">
-                  {selectedFile ? selectedFile.name : "Nhấp để chọn file từ máy tính"}
-                </span>
-                <span className="text-[10px] text-zinc-500 block">
-                  {selectedFile ? `${(selectedFile.size / 1024 / 1024).toFixed(2)} MB` : "Tối đa 100MB per file"}
-                </span>
-              </label>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-850">
-              <button
-                onClick={() => {
-                  setShowUploadModal(false);
-                  setSelectedFile(null);
-                }}
-                className="rounded-xl border border-zinc-850 bg-zinc-950 text-zinc-300 font-semibold py-2 px-4 text-xs hover:bg-zinc-850 hover:text-white"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={() => {
-                  if (selectedFile) uploadMutation.mutate(selectedFile);
-                }}
-                disabled={!selectedFile || uploadMutation.isPending}
-                className="rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold py-2 px-4 text-xs transition-all flex items-center gap-1.5 active:scale-95"
-              >
-                {uploadMutation.isPending && <RefreshCw className="h-3.5 w-3.5 animate-spin" />}
-                {uploadMutation.isPending ? "Đang gửi..." : "Tải lên & Chạy ngầm"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

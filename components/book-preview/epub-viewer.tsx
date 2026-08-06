@@ -21,6 +21,7 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
   const renditionRef = useRef<any>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isReady, setIsReady] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [toc, setToc] = useState<TocItem[]>([]);
   const [currentSection, setCurrentSection] = useState<string>("");
@@ -31,18 +32,22 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
     if (!fileUrl || !viewerRef.current) return;
 
     let isMounted = true;
+    let book: any = null;
+    let rendition: any = null;
     setIsLoading(true);
+    setIsReady(false);
     setError(null);
+    setToc([]);
+    setCurrentSection("");
 
     async function initEpub() {
       try {
         const ePub = (await import("epubjs")).default;
         if (!isMounted) return;
 
-        const book = ePub(fileUrl);
-        bookRef.current = book;
+        book = ePub(fileUrl);
 
-        const rendition = book.renderTo(viewerRef.current!, {
+        rendition = book.renderTo(viewerRef.current!, {
           width: "100%",
           height: "100%",
           flow: "paginated",
@@ -52,11 +57,15 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
 
         await rendition.display();
 
-        book.loaded.navigation.then((nav: any) => {
-          if (isMounted && nav?.toc) {
-            setToc(nav.toc);
-          }
-        });
+        book.loaded.navigation
+          .then((nav: any) => {
+            if (isMounted && nav?.toc) {
+              setToc(nav.toc);
+            }
+          })
+          .catch(() => {
+            // The book may be destroyed while its navigation is still loading.
+          });
 
         rendition.on("relocated", (location: any) => {
           if (isMounted && location?.start?.href) {
@@ -65,6 +74,9 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
         });
 
         if (isMounted) {
+          bookRef.current = book;
+          renditionRef.current = rendition;
+          setIsReady(true);
           setIsLoading(false);
         }
       } catch (err: any) {
@@ -80,34 +92,54 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
 
     return () => {
       isMounted = false;
-      if (renditionRef.current) {
+      if (rendition) {
         try {
-          renditionRef.current.destroy();
+          rendition.destroy();
         } catch (e) {
           // ignore cleanup errors
         }
       }
+      if (book) {
+        try {
+          book.destroy();
+        } catch (e) {
+          // ignore cleanup errors
+        }
+      }
+      if (renditionRef.current === rendition) renditionRef.current = null;
+      if (bookRef.current === book) bookRef.current = null;
     };
   }, [fileUrl]);
 
   const handleNext = () => {
-    if (renditionRef.current) renditionRef.current.next();
+    if (!isReady || !renditionRef.current) return;
+    const rendition = renditionRef.current;
+    void Promise.resolve(rendition.next()).catch(() => {
+      if (renditionRef.current === rendition) setError("Không thể chuyển trang EPUB.");
+    });
   };
 
   const handlePrev = () => {
-    if (renditionRef.current) renditionRef.current.prev();
+    if (!isReady || !renditionRef.current) return;
+    const rendition = renditionRef.current;
+    void Promise.resolve(rendition.prev()).catch(() => {
+      if (renditionRef.current === rendition) setError("Không thể chuyển trang EPUB.");
+    });
   };
 
   const handleSelectToc = (href: string) => {
-    if (renditionRef.current && href) {
-      renditionRef.current.display(href);
+    if (isReady && renditionRef.current && href) {
+      const rendition = renditionRef.current;
+      void Promise.resolve(rendition.display(href)).catch(() => {
+        if (renditionRef.current === rendition) setError("Không thể mở chương EPUB.");
+      });
     }
   };
 
   const handleFontSizeChange = (delta: number) => {
     const newSize = Math.max(70, Math.min(160, fontSize + delta));
     setFontSize(newSize);
-    if (renditionRef.current) {
+    if (isReady && renditionRef.current) {
       renditionRef.current.themes.fontSize(`${newSize}%`);
     }
   };
@@ -132,7 +164,8 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
             <select
               value={currentSection}
               onChange={(e) => handleSelectToc(e.target.value)}
-              className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 max-w-[160px] truncate"
+              disabled={!isReady}
+              className="bg-zinc-950 border border-zinc-800 text-zinc-300 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-violet-500 max-w-[160px] truncate disabled:opacity-50"
             >
               <option value="">Chương sách...</option>
               {toc.map((item) => (
@@ -147,7 +180,8 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
           <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-lg p-0.5">
             <button
               onClick={() => handleFontSizeChange(-10)}
-              className="px-2 py-1 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors"
+              disabled={!isReady}
+              className="px-2 py-1 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
               title="Giảm cỡ chữ"
             >
               A-
@@ -155,7 +189,8 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
             <span className="text-[10px] font-mono text-zinc-400 px-1">{fontSize}%</span>
             <button
               onClick={() => handleFontSizeChange(10)}
-              className="px-2 py-1 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors"
+              disabled={!isReady}
+              className="px-2 py-1 text-xs font-bold text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
               title="Tăng cỡ chữ"
             >
               A+
@@ -211,7 +246,8 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
             {/* Prev Button Overlay */}
             <button
               onClick={handlePrev}
-              className="absolute left-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-zinc-900/80 text-zinc-200 hover:bg-violet-600 hover:text-white border border-zinc-700 shadow-2xl transition-all z-20"
+              disabled={!isReady}
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-zinc-900/80 text-zinc-200 hover:bg-violet-600 hover:text-white border border-zinc-700 shadow-2xl transition-all z-20 disabled:opacity-40 disabled:pointer-events-none"
               title="Trang trước"
             >
               <ChevronLeft className="h-5 w-5" />
@@ -220,7 +256,8 @@ export default function EpubViewer({ fileUrl, title }: EpubViewerProps) {
             {/* Next Button Overlay */}
             <button
               onClick={handleNext}
-              className="absolute right-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-zinc-900/80 text-zinc-200 hover:bg-violet-600 hover:text-white border border-zinc-700 shadow-2xl transition-all z-20"
+              disabled={!isReady}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-3 rounded-full bg-zinc-900/80 text-zinc-200 hover:bg-violet-600 hover:text-white border border-zinc-700 shadow-2xl transition-all z-20 disabled:opacity-40 disabled:pointer-events-none"
               title="Trang tiếp theo"
             >
               <ChevronRight className="h-5 w-5" />

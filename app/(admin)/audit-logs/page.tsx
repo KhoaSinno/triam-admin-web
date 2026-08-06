@@ -132,7 +132,7 @@ function AuditLogsContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl bg-gradient-to-r from-zinc-50 to-zinc-400 bg-clip-text text-transparent">
-            Nhật ký hoạt động (Audit Logs)
+            Nhật ký hoạt động
           </h1>
           <p className="mt-1.5 text-sm text-zinc-450">
             Ghi nhận lịch sử các thao tác nghiệp vụ và sự kiện cấu hình từ hệ thống Admin

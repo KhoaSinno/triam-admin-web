@@ -300,6 +300,16 @@ export type AdminSegmentItem = {
   duration_ms: number | null;
 };
 
+export type AdminLearningUnitSourceItem = {
+  section_id: string;
+  section_index: number;
+  section_title: string;
+  section_path: string;
+  page_start: number | null;
+  page_end: number | null;
+  source_order: number;
+};
+
 export type AdminLearningUnitItem = {
   id: string;
   unit_index: number;
@@ -313,6 +323,7 @@ export type AdminLearningUnitItem = {
   review_audio_url: string | null;
   planner_reason: string | null;
   segments: AdminSegmentItem[];
+  sources: AdminLearningUnitSourceItem[];
 };
 
 export type AdminBookAudioUnitsResponse = {

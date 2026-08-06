@@ -962,6 +962,8 @@ export default function BookDetailPage() {
                             <span>{Math.round(unit.estimated_audio_seconds / 60)} phút</span>
                             <span>·</span>
                             <span>{unit.segments.length} segments</span>
+                            <span>·</span>
+                            <span>{unit.sources.length} mục nguồn</span>
                           </div>
                         </div>
 
@@ -975,6 +977,49 @@ export default function BookDetailPage() {
                       {/* Unit Segments List */}
                       {isExpanded && (
                         <div className="border-t border-zinc-900 bg-zinc-950 p-2 space-y-1.5">
+                          <div className="rounded-lg border border-zinc-850 bg-zinc-900/30 p-3 space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-zinc-300">
+                                <FileText className="h-3.5 w-3.5 text-violet-400" />
+                                Nguồn tạo bài học
+                              </span>
+                              <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[8px] font-bold text-violet-300">
+                                {unit.mode.toUpperCase()}
+                              </span>
+                            </div>
+
+                            {unit.sources.length === 0 ? (
+                              <p className="text-[10px] italic text-zinc-600">
+                                Chưa có dữ liệu mapping từ bài học đến mục lục nguồn.
+                              </p>
+                            ) : (
+                              <div className="space-y-1">
+                                {unit.sources.map((source) => (
+                                  <button
+                                    key={source.section_id}
+                                    onClick={() => {
+                                      setSelectedSectionId(source.section_id);
+                                      setActiveTab("sections");
+                                    }}
+                                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[10px] text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+                                    title="Mở mục lục và dữ liệu vector của phần nguồn"
+                                  >
+                                    <span className="shrink-0 font-mono text-violet-400">#{source.source_order + 1}</span>
+                                    <span className="min-w-0 flex-1 truncate">{source.section_title}</span>
+                                    <span className="shrink-0 text-[9px] text-zinc-600">Mục {source.section_index}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+
+                            {unit.planner_reason && (
+                              <p className="border-t border-zinc-850 pt-2 text-[10px] leading-relaxed text-zinc-500">
+                                <span className="font-bold text-zinc-400">Lý do chọn: </span>
+                                {unit.planner_reason}
+                              </p>
+                            )}
+                          </div>
+
                           {/* Unit Review Audio if available */}
                           {unit.review_audio_url && (
                             <button

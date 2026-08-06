@@ -388,9 +388,52 @@ export type AdminCancelJobResponse = {
   rolled_back: boolean;
 };
 
-export async function adminUploadBook(file: File): Promise<AdminBookUploadResponse> {
+export async function adminUploadBook(
+  file: File,
+  onProgress?: (percent: number) => void,
+): Promise<AdminBookUploadResponse> {
   const formData = new FormData();
   formData.append("file", file);
+
+  if (onProgress) {
+    const token = await getValidToken();
+    if (!token) {
+      throw new Error("NO_SESSION");
+    }
+
+    return new Promise((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", `${API_BASE_URL}/api/v1/admin/books/upload`);
+      request.setRequestHeader("Authorization", `Bearer ${token}`);
+
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          onProgress(Math.round((event.loaded / event.total) * 100));
+        }
+      };
+
+      request.onerror = () => reject(new Error("Không thể kết nối tới máy chủ khi tải sách."));
+      request.onabort = () => reject(new Error("Tải sách đã bị hủy."));
+      request.onload = () => {
+        let body: unknown = null;
+        try {
+          body = request.responseText ? JSON.parse(request.responseText) : null;
+        } catch {
+          reject(new Error("Máy chủ trả về dữ liệu không hợp lệ khi tải sách."));
+          return;
+        }
+        if (request.status < 200 || request.status >= 300) {
+          const errorBody = body as { detail?: string } | null;
+          reject(new Error(errorBody?.detail ?? `ADMIN_API_ERROR (${request.status})`));
+          return;
+        }
+        resolve(body as AdminBookUploadResponse);
+      };
+
+      request.send(formData);
+    });
+  }
+
   return adminFetch<AdminBookUploadResponse>("/books/upload", {
     method: "POST",
     body: formData,

@@ -4,7 +4,6 @@ import React, { useState, useEffect, Suspense, useRef } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/auth-context";
-import { getValidToken } from "@/lib/supabase";
 import { formatDateShort, truncateId } from "@/lib/utils";
 import {
   adminFetch,
@@ -72,7 +71,7 @@ function SystemBooksContent() {
 
   // Trigger processing state
   const [processMode, setProcessMode] = useState<"full" | "pareto" | "both">("both");
-  const [autoShare, setAutoShare] = useState(true);
+  const [autoShare, setAutoShare] = useState(false);
   const [isProcessingSubmit, setIsProcessingSubmit] = useState(false);
 
   // Debounce search input (300ms)
@@ -114,9 +113,7 @@ function SystemBooksContent() {
     if (activeTab === "admin" && adminUserId) {
       params.set("user_id", adminUserId);
     } else if (activeTab === "shared") {
-      // NOTE: Our backend doesn't support direct filtering of is_shared in the URL,
-      // but we will do client-side filtering or fetch all. To get the best data,
-      // we fetch all books.
+      params.set("is_shared", "true");
     }
     
     return `/books?${params.toString()}`;
@@ -135,16 +132,12 @@ function SystemBooksContent() {
     placeholderData: keepPreviousData,
   });
 
-  // Client-side filtering when "shared" tab is selected (since backend has no is_shared query param)
   const allItems = booksData?.items || [];
-  const items = activeTab === "shared" 
-    ? allItems.filter(book => book.is_shared === true) 
-    : allItems;
-
+  const items = allItems;
   const rawTotal = booksData?.total || 0;
-  const total = activeTab === "shared" ? items.length : rawTotal;
+  const total = rawTotal;
 
-  const hasNext = activeTab !== "shared" && (offset + allItems.length < rawTotal);
+  const hasNext = offset + allItems.length < rawTotal;
   const hasPrev = offset > 0;
   const startNum = total === 0 ? 0 : offset + 1;
   const endNum = offset + items.length;
@@ -217,7 +210,7 @@ function SystemBooksContent() {
     setUploadProgress(0);
 
     try {
-      const res = await adminUploadBook(file);
+      const res = await adminUploadBook(file, setUploadProgress);
       toast.success("Tải sách lên thành công! Tiến trình bóc tách và sinh vector đang chạy ngầm.");
       localStorage.setItem("triam_admin_active_job_id", res.job_id);
       window.dispatchEvent(new Event("triam_admin_job_started"));
@@ -696,7 +689,7 @@ function SystemBooksContent() {
         )}
 
         {/* Footer Pagination */}
-        {!isLoading && !isError && total > 0 && activeTab !== "shared" && (
+        {!isLoading && !isError && total > 0 && (
           <div className="responsive-pagination border-t border-zinc-850 bg-zinc-950/40 px-6 py-4 text-xs font-semibold text-zinc-455 select-none">
             <div>
               Hiển thị <span className="text-zinc-200 font-bold">{startNum}</span> đến{" "}

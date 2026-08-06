@@ -77,8 +77,7 @@ export default function BookDetailPage() {
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [retryJobId, setRetryJobId] = useState<string | null>(null);
 
-  // Outline display mode filter & export state
-  const [outlineModeFilter, setOutlineModeFilter] = useState<"full" | "pareto">("full");
+  // Export state
   const [isExporting, setIsExporting] = useState(false);
 
   // Metadata edit modal state
@@ -372,18 +371,6 @@ export default function BookDetailPage() {
     const s = Math.floor(secs % 60);
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   };
-
-  const hasFullMode = sections.some((s) => s.modes.includes("full"));
-
-  const filteredSections = sections.filter((sec) => {
-    if (outlineModeFilter === "full") {
-      return hasFullMode ? sec.modes.includes("full") : true;
-    }
-    if (outlineModeFilter === "pareto") {
-      return sec.modes.includes("pareto");
-    }
-    return true;
-  });
 
   if (isBookLoading) {
     return (
@@ -770,55 +757,22 @@ export default function BookDetailPage() {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/10 p-4 shadow-md backdrop-blur-xl h-[560px] flex flex-col">
             <h3 className="text-xs font-bold text-white uppercase tracking-wider border-b border-zinc-850 pb-3 mb-3 shrink-0 flex items-center gap-2">
               <BookOpen className="h-4 w-4 text-violet-400" />
-              Mục lục cuốn sách ({filteredSections.length})
+              Mục lục toàn bộ sách ({sections.length})
             </h3>
-
-            {/* Display Mode Segment buttons */}
-            <div className="mb-3 shrink-0">
-              <label className="text-[9px] text-zinc-550 font-bold uppercase tracking-wide block mb-1">
-                Chế độ hiển thị mục lục
-              </label>
-              <div className="grid grid-cols-2 gap-1 bg-zinc-950 p-1 rounded-lg border border-zinc-850">
-                {[
-                  { value: "full", label: "Đầy đủ" },
-                  { value: "pareto", label: "Tinh gọn" }
-                ].map((modeOpt) => (
-                  <button
-                    key={modeOpt.value}
-                    onClick={() => {
-                      setOutlineModeFilter(modeOpt.value as any);
-                      setSelectedSectionId(null);
-                    }}
-                    className={`py-1.5 text-[9px] font-bold rounded-md transition-all ${
-                      outlineModeFilter === modeOpt.value
-                        ? "bg-violet-600 text-white"
-                        : "text-zinc-500 hover:text-zinc-200"
-                    }`}
-                  >
-                    {modeOpt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
 
             {isSectionsLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-violet-550 border-t-transparent"></div>
               </div>
-            ) : filteredSections.length === 0 ? (
+            ) : sections.length === 0 ? (
               <div className="flex-1 flex items-center justify-center text-xs text-zinc-500 italic text-center px-4">
                 Không tìm thấy mục lục nào trong cuốn sách này.
               </div>
             ) : (
               <div className="flex-1 overflow-y-auto pr-1 space-y-1 scrollbar-thin">
-                {filteredSections.map((sec) => {
+                {sections.map((sec) => {
                   const isSelected = selectedSectionId === sec.id;
-                  const isIncluded =
-                    outlineModeFilter === "pareto"
-                      ? sec.modes.includes("pareto")
-                      : hasFullMode
-                      ? sec.modes.includes("full")
-                      : true;
+                  const hasVectorChunks = sec.chunk_count > 0;
 
                   return (
                     <button
@@ -835,13 +789,13 @@ export default function BookDetailPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-1">
                           <p className="truncate leading-tight font-medium">{sec.title}</p>
-                          {isIncluded ? (
+                          {hasVectorChunks ? (
                             <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded-md bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                              Đã có
+                              Đã lập chỉ mục
                             </span>
                           ) : (
                             <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-bold rounded-md bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                              Chưa có
+                              Chưa có vector
                             </span>
                           )}
                         </div>

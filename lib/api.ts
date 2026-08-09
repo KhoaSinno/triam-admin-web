@@ -55,6 +55,9 @@ export type AdminUserListItem = {
   email: string | null;
   display_name: string | null;
   avatar_url: string | null;
+  is_active: boolean;
+  is_admin: boolean;
+  banned_until: string | null;
   account_created_at: string | null;
   last_sign_in_at: string | null;
   book_count: number;
@@ -186,6 +189,34 @@ export type AdminBooksResponse = PaginatedResponse<AdminBookListItem>;
 export type AdminJobsResponse = PaginatedResponse<AdminJobListItem>;
 export type AdminAuditLogsResponse = PaginatedResponse<AdminAuditLogItem>;
 
+export type AdminUserStatsResponse = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  total_listened_ms: number;
+  total_hours_listened: number;
+  total_sessions_completed: number;
+  total_units_completed: number;
+  total_reviews_completed: number;
+  books_owned_count: number;
+  created_at: string | null;
+  last_active_at: string | null;
+};
+
+export type AdminUserStatusUpdateResponse = {
+  user_id: string;
+  is_active: boolean;
+  banned_until: string | null;
+  message: string;
+};
+
+export type AdminUserDirectNotifyResponse = {
+  user_id: string;
+  outbox_id: string;
+  status: "pending" | "processing" | "sent" | "failed" | "cancelled" | "skipped";
+  message: string;
+};
+
 export async function adminFetch<T>(
   path: string,
   init?: RequestInit,
@@ -243,6 +274,35 @@ export function getErrorMessage(error: unknown, fallback = "Đã xảy ra lỗi.
   }
 
   return fallback;
+}
+
+export async function updateAdminUserStatus(
+  userId: string,
+  isActive: boolean,
+  banReason?: string,
+): Promise<AdminUserStatusUpdateResponse> {
+  return adminFetch<AdminUserStatusUpdateResponse>(`/users/${userId}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active: isActive, ban_reason: banReason || null }),
+  });
+}
+
+export async function sendAdminUserNotification(
+  userId: string,
+  payload: { title: string; body: string; idempotencyKey: string },
+): Promise<AdminUserDirectNotifyResponse> {
+  return adminFetch<AdminUserDirectNotifyResponse>(`/users/${userId}/notify`, {
+    method: "POST",
+    body: JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      idempotency_key: payload.idempotencyKey,
+    }),
+  });
+}
+
+export async function getAdminUserStats(userId: string): Promise<AdminUserStatsResponse> {
+  return adminFetch<AdminUserStatsResponse>(`/users/${userId}/stats`);
 }
 
 export async function getBookSections(bookId: string): Promise<AdminBookSectionListItem[]> {

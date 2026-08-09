@@ -1,11 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import React, { useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { adminFetch, AdminUsersResponse } from "@/lib/api";
+import { adminFetch, AdminUserListItem, AdminUsersResponse, getErrorMessage, sendAdminUserNotification, updateAdminUserStatus } from "@/lib/api";
 import { formatDate, truncateId, getInitials, getPaginationRange } from "@/lib/utils";
+import { UserNotificationDialog, UserStatusDialog } from "@/components/user-management/user-action-dialogs";
 import {
+  BarChart3,
   Users,
   Copy,
   ChevronLeft,
@@ -17,13 +20,28 @@ import {
   Calendar,
   AlertTriangle,
   CheckCircle,
+  LockKeyhole,
+  Send,
+  UnlockKeyhole,
 } from "lucide-react";
 import { toast } from "sonner";
 
+const UserAnalyticsDrawer = dynamic(
+  () => import("@/components/user-management/user-analytics-drawer"),
+  { ssr: false },
+);
+
 export default function UsersPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [limit] = useState(50);
   const [offset, setOffset] = useState(0);
+  const [statusUser, setStatusUser] = useState<AdminUserListItem | null>(null);
+  const [notificationUser, setNotificationUser] = useState<AdminUserListItem | null>(null);
+  const [analyticsUserId, setAnalyticsUserId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("user_id");
+  });
 
   const {
     data: usersData,
@@ -52,8 +70,35 @@ export default function UsersPage() {
     }
   };
 
+  const statusMutation = useMutation({
+    mutationFn: ({ user, reason }: { user: AdminUserListItem; reason: string }) =>
+      updateAdminUserStatus(user.user_id, !user.is_active, reason),
+    onSuccess: (response) => {
+      toast.success(response.message);
+      setStatusUser(null);
+      void queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError, "Không thể cập nhật trạng thái tài khoản."));
+    },
+  });
+
+  const notificationMutation = useMutation({
+    mutationFn: ({ user, title, body, idempotencyKey }: { user: AdminUserListItem; title: string; body: string; idempotencyKey: string }) =>
+      sendAdminUserNotification(user.user_id, { title, body, idempotencyKey }),
+    onSuccess: (response) => {
+      toast.success(response.message);
+      setNotificationUser(null);
+      void queryClient.invalidateQueries({ queryKey: ["adminUsers"] });
+    },
+    onError: (mutationError) => {
+      toast.error(getErrorMessage(mutationError, "Không thể đưa thông báo vào hàng đợi."));
+    },
+  });
+
   const items = usersData?.items || [];
   const total = usersData?.total || 0;
+  const analyticsUser = items.find((item) => item.user_id === analyticsUserId) ?? null;
 
   const { hasNext, hasPrev, startNum, endNum } = getPaginationRange(
     offset,
@@ -61,6 +106,26 @@ export default function UsersPage() {
     total,
     items.length
   );
+
+  const openAnalytics = (user: AdminUserListItem) => {
+    setAnalyticsUserId(user.user_id);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("user_id", user.user_id);
+      url.searchParams.set("panel", "analytics");
+      window.history.replaceState(null, "", url);
+    }
+  };
+
+  const closeAnalytics = () => {
+    setAnalyticsUserId(null);
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("user_id");
+      url.searchParams.delete("panel");
+      window.history.replaceState(null, "", url);
+    }
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -124,9 +189,11 @@ export default function UsersPage() {
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-950/50 text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                   <th className="px-6 py-4">Người dùng</th>
+                  <th className="px-6 py-4">Trạng thái</th>
                   <th className="px-6 py-4">Tài nguyên</th>
                   <th className="px-6 py-4">Hoạt động gần nhất</th>
                   <th className="px-6 py-4">Đăng nhập gần nhất</th>
+                  <th className="px-6 py-4 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-850">
@@ -158,12 +225,19 @@ export default function UsersPage() {
                               onClick={() => handleCopy(userItem.user_id)}
                               className="rounded p-1 text-zinc-500 transition hover:bg-zinc-850 hover:text-zinc-200"
                               title="Sao chép User ID"
+                              aria-label="Sao chép User ID"
                             >
                               <Copy className="h-3 w-3" />
                             </button>
                           </div>
                         </div>
                       </div>
+                    </td>
+
+                    <td data-label="Trạng thái" className="px-6 py-4">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold ${userItem.is_active ? "bg-emerald-500/10 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>
+                        {userItem.is_active ? "Hoạt động" : "Đã khóa"}
+                      </span>
                     </td>
 
                     <td data-label="Tài nguyên" className="px-6 py-4">
@@ -204,6 +278,39 @@ export default function UsersPage() {
                         </p>
                       )}
                     </td>
+
+                    <td data-label="Thao tác" className="px-6 py-4">
+                      <div className="flex justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => openAnalytics(userItem)}
+                          className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-violet-500/15 hover:text-violet-300 focus-visible:ring-2 focus-visible:ring-violet-400"
+                          title="Xem thống kê học tập"
+                          aria-label={`Xem thống kê học tập của ${userItem.display_name || userItem.email || "người dùng"}`}
+                        >
+                          <BarChart3 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNotificationUser(userItem)}
+                          className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-blue-500/15 hover:text-blue-300 focus-visible:ring-2 focus-visible:ring-blue-400"
+                          title="Gửi thông báo"
+                          aria-label={`Gửi thông báo cho ${userItem.display_name || userItem.email || "người dùng"}`}
+                        >
+                          <Send className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setStatusUser(userItem)}
+                          disabled={userItem.is_admin}
+                          className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-amber-500/15 hover:text-amber-300 focus-visible:ring-2 focus-visible:ring-amber-400 disabled:cursor-not-allowed disabled:opacity-35"
+                          title={userItem.is_admin ? "Không thể thay đổi trạng thái tài khoản quản trị viên" : userItem.is_active ? "Khóa tài khoản" : "Mở khóa tài khoản"}
+                          aria-label={userItem.is_admin ? "Không thể thay đổi trạng thái tài khoản quản trị viên" : userItem.is_active ? `Khóa tài khoản ${userItem.display_name || userItem.email || "người dùng"}` : `Mở khóa tài khoản ${userItem.display_name || userItem.email || "người dùng"}`}
+                        >
+                          {userItem.is_active ? <LockKeyhole className="h-4 w-4" aria-hidden="true" /> : <UnlockKeyhole className="h-4 w-4" aria-hidden="true" />}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -238,6 +345,24 @@ export default function UsersPage() {
           </div>
         )}
       </div>
+
+      <UserStatusDialog
+        user={statusUser}
+        isPending={statusMutation.isPending}
+        onClose={() => !statusMutation.isPending && setStatusUser(null)}
+        onConfirm={(reason) => {
+          if (statusUser) statusMutation.mutate({ user: statusUser, reason });
+        }}
+      />
+      <UserNotificationDialog
+        user={notificationUser}
+        isPending={notificationMutation.isPending}
+        onClose={() => !notificationMutation.isPending && setNotificationUser(null)}
+        onConfirm={(payload) => {
+          if (notificationUser) notificationMutation.mutate({ user: notificationUser, ...payload });
+        }}
+      />
+      <UserAnalyticsDrawer user={analyticsUser} onClose={closeAnalytics} />
     </div>
   );
 }

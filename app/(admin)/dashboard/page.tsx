@@ -263,8 +263,8 @@ export default function DashboardPage() {
         {/* Jobs Distribution Chart */}
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 shadow-lg backdrop-blur-xl">
           <div className="mb-4">
-            <h2 className="text-base font-bold text-white">Tiến trình (Jobs) theo trạng thái</h2>
-            <p className="text-xs text-zinc-450">Trạng thái các đầu công việc lưu trong hệ thống</p>
+            <h2 className="text-base font-bold text-white">Trạng thái các tiến trình</h2>
+            <p className="text-xs text-zinc-450">Trạng thái các tiến trình xử lý</p>
           </div>
 
           <div className="space-y-4">

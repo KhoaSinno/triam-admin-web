@@ -13,6 +13,9 @@ import {
   DocumentType,
   getErrorMessage,
   AdminBookListItem,
+  archiveSystemBook,
+  purgeSystemBook,
+  restoreSystemBook,
 } from "@/lib/api";
 import {
   BookOpen,
@@ -32,6 +35,8 @@ import {
   CheckCircle2,
   Share2,
   Trash2,
+  Archive,
+  RotateCcw,
   Sparkles,
   HelpCircle,
   FolderLock,
@@ -45,8 +50,7 @@ function SystemBooksContent() {
   const { profile } = useAuth();
   const adminUserId = profile?.user_id;
 
-  // Tabs: 'admin' (Sách Admin upload - Mặc định), 'shared' (Thư viện chung đã chia sẻ), 'all' (Tất cả sách)
-  const [activeTab, setActiveTab] = useState<"admin" | "shared" | "all">("admin");
+  const [activeTab, setActiveTab] = useState<"admin" | "shared" | "archived">("admin");
 
   // State Management
   const [searchVal, setSearchVal] = useState("");
@@ -61,7 +65,10 @@ function SystemBooksContent() {
   const [processBook, setProcessBook] = useState<
     AdminBookListItem | { id: string; title: string; has_full_mode?: boolean; has_pareto_mode?: boolean } | null
   >(null);
-  const [confirmDeleteBook, setConfirmDeleteBook] = useState<{ id: string; title: string } | null>(null);
+  const [bookAction, setBookAction] = useState<{
+    book: AdminBookListItem;
+    action: "archive" | "purge" | "delete";
+  } | null>(null);
 
   // File Upload State
   const [isUploading, setIsUploading] = useState(false);
@@ -112,8 +119,12 @@ function SystemBooksContent() {
     // Filter logic based on selected tab
     if (activeTab === "admin" && adminUserId) {
       params.set("user_id", adminUserId);
+      params.set("archived", "false");
     } else if (activeTab === "shared") {
       params.set("is_shared", "true");
+      params.set("archived", "false");
+    } else if (activeTab === "archived") {
+      params.set("archived", "true");
     }
     
     return `/books?${params.toString()}`;
@@ -277,20 +288,19 @@ function SystemBooksContent() {
     },
   });
 
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: (bookId: string) =>
-      adminFetch<void>(`/api/v1/books/${bookId}`, {
-        method: "DELETE",
-      }),
-    onSuccess: () => {
-      toast.success("Đã xóa sách mẫu thành công.");
+  const bookActionMutation = useMutation({
+    mutationFn: async ({ bookId, action }: { bookId: string; action: "archive" | "purge" | "delete" }) => {
+      if (action === "archive") return archiveSystemBook(bookId);
+      if (action === "purge") return purgeSystemBook(bookId);
+      return adminFetch<void>(`/api/v1/books/${bookId}`, { method: "DELETE" });
+    },
+    onSuccess: (result, variables) => {
+      toast.success(result && "message" in result ? result.message : "Đã xóa sách mẫu thành công.");
       queryClient.invalidateQueries({ queryKey: ["systemBooks"] });
-      setConfirmDeleteBook(null);
+      setBookAction(null);
     },
     onError: (err: unknown) => {
-      toast.error(getErrorMessage(err, "Không thể xóa sách mẫu."));
-      setConfirmDeleteBook(null);
+      toast.error(getErrorMessage(err, "Không thể thực hiện thao tác với sách."));
     },
   });
 
@@ -311,8 +321,16 @@ function SystemBooksContent() {
     );
   };
 
-  const getSharedBadge = (isShared: boolean | undefined) => {
-    if (isShared) {
+  const getSharedBadge = (book: AdminBookListItem) => {
+    if (book.archived_at) {
+      return (
+        <span className="inline-flex items-center gap-1 rounded-lg border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-400">
+          <Archive className="h-3 w-3" />
+          Đã gỡ
+        </span>
+      );
+    }
+    if (book.is_shared) {
       return (
         <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400">
           <Rocket className="h-3 w-3" />
@@ -387,15 +405,14 @@ function SystemBooksContent() {
           Thư viện dùng chung
         </button>
         <button
-          onClick={() => { setActiveTab("all"); setOffset(0); }}
+          onClick={() => { setActiveTab("archived"); setOffset(0); }}
           className={`px-5 py-3 text-sm font-bold transition-all border-b-2 -mb-px ${
-            activeTab === "all"
-              ? "border-transparent text-zinc-450 hover:text-zinc-200"
+            activeTab === "archived"
+              ? "border-violet-500 text-violet-400"
               : "border-transparent text-zinc-450 hover:text-zinc-200"
           }`}
-          style={{ display: "none" }} // Hidden but kept for architectural sync
         >
-          Tất cả sách
+          Đã gỡ
         </button>
       </div>
 
@@ -568,7 +585,10 @@ function SystemBooksContent() {
                     {/* Shared Status */}
                     <td data-label="Thư viện chung" className="px-6 py-4">
                       <div className="flex flex-col gap-1.5 items-start">
-                        {getSharedBadge(book.is_shared)}
+                        {getSharedBadge(book)}
+                        {book.clone_count ? (
+                          <span className="text-[10px] font-medium text-zinc-500">{book.clone_count} bản sao đang dùng</span>
+                        ) : null}
                         <div className="flex flex-wrap gap-1">
                           {book.has_full_mode && (
                             <span className="inline-flex items-center rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 px-1.5 py-0.5 text-[9px] font-bold">
@@ -619,7 +639,7 @@ function SystemBooksContent() {
                     <td data-label="Thao tác" data-actions className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {/* Trigger Processing Button */}
-                        {book.status !== "processing" && (
+                        {!book.archived_at && book.status !== "processing" && (
                           <button
                             onClick={() => !(book.has_full_mode && book.has_pareto_mode) && setProcessBook(book)}
                             disabled={book.has_full_mode && book.has_pareto_mode}
@@ -639,7 +659,7 @@ function SystemBooksContent() {
                         )}
                         
                         {/* Publish manually button */}
-                        {["ready", "partial_ready"].includes(book.status || "") && !book.is_shared && (
+                        {!book.archived_at && ["ready", "partial_ready"].includes(book.status || "") && !book.is_shared && (
                           <button
                             onClick={() => toggleShareMutation.mutate({ bookId: book.id, share: true })}
                             className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
@@ -649,14 +669,24 @@ function SystemBooksContent() {
                           </button>
                         )}
 
-                        {/* Unpublish manually button */}
-                        {book.is_shared && (
+                        {/* Archive keeps the source and storage available to existing clones. */}
+                        {!book.archived_at && book.is_shared && (
                           <button
-                            onClick={() => toggleShareMutation.mutate({ bookId: book.id, share: false })}
+                            onClick={() => setBookAction({ book, action: "archive" })}
                             className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
-                            title="Hủy xuất bản khỏi Thư viện"
+                            title="Gỡ khỏi thư viện (giữ an toàn các bản sao)"
                           >
-                            <FolderLock className="h-4 w-4 text-amber-500" />
+                            <Archive className="h-4 w-4 text-amber-500" />
+                          </button>
+                        )}
+
+                        {book.archived_at && (
+                          <button
+                            onClick={() => restoreSystemBook(book.id).then((result) => { toast.success(result.message); queryClient.invalidateQueries({ queryKey: ["systemBooks"] }); }).catch((err) => toast.error(getErrorMessage(err, "Không thể khôi phục sách.")))}
+                            className="rounded-lg p-1.5 text-zinc-450 hover:bg-zinc-800 hover:text-white border border-transparent hover:border-zinc-750 transition-all"
+                            title="Khôi phục vào thư viện hệ thống"
+                          >
+                            <RotateCcw className="h-4 w-4 text-emerald-400" />
                           </button>
                         )}
 
@@ -669,12 +699,21 @@ function SystemBooksContent() {
                           <Eye className="h-4 w-4" />
                         </button>
 
-                        {/* Delete System Book */}
-                        {activeTab === "admin" && (
+                        {book.archived_at && (
                           <button
-                            onClick={() => setConfirmDeleteBook({ id: book.id, title: book.title })}
+                            onClick={() => book.can_permanently_delete && setBookAction({ book, action: "purge" })}
+                            disabled={!book.can_permanently_delete}
+                            className="rounded-lg p-1.5 text-zinc-450 hover:bg-rose-500/10 hover:text-rose-450 border border-transparent transition-all disabled:cursor-not-allowed disabled:opacity-35"
+                            title={book.can_permanently_delete ? "Xóa vĩnh viễn" : `Còn ${book.clone_count || 0} bản sao đang dùng`}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        )}
+                        {!book.archived_at && !book.is_shared && activeTab === "admin" && (
+                          <button
+                            onClick={() => setBookAction({ book, action: "delete" })}
                             className="rounded-lg p-1.5 text-zinc-450 hover:bg-rose-500/10 hover:text-rose-450 border border-transparent transition-all"
-                            title="Xóa sách mẫu"
+                            title="Xóa sách chưa xuất bản"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -944,40 +983,41 @@ function SystemBooksContent() {
         </div>
       )}
 
-      {/* Modal 3: Xác Nhận Xóa Sách Mẫu */}
-      {confirmDeleteBook && (
+      {bookAction && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 text-red-450 border-b border-zinc-800 pb-3 mb-5">
               <AlertTriangle className="h-5 w-5 shrink-0" />
-              <h3 className="text-base font-bold text-white">Xác Nhận Xóa Sách Mẫu</h3>
+              <h3 className="text-base font-bold text-white">
+                {bookAction.action === "archive" ? "Gỡ Sách Khỏi Thư Viện" : "Xác Nhận Xóa Sách"}
+              </h3>
             </div>
 
             <div className="space-y-4">
               <p className="text-xs text-zinc-400 leading-relaxed">
-                Bạn đang yêu cầu xóa cuốn sách mẫu hệ thống:
+                {bookAction.action === "archive" ? "Sách sẽ không còn để người dùng mới chọn, nhưng mọi bản sao hiện có vẫn giữ nguyên audio, PDF và dữ liệu học." : "Bạn đang yêu cầu xóa cuốn sách mẫu hệ thống:"}
               </p>
-              <p className="text-sm font-bold text-zinc-200 bg-zinc-950 p-3 rounded-xl border border-zinc-850 truncate" title={confirmDeleteBook.title}>
-                {confirmDeleteBook.title}
+              <p className="text-sm font-bold text-zinc-200 bg-zinc-950 p-3 rounded-xl border border-zinc-850 truncate" title={bookAction.book.title}>
+                {bookAction.book.title}
               </p>
               <div className="rounded-xl border border-red-500/10 bg-red-500/5 p-4 text-[10px] text-red-400 leading-relaxed">
-                ⚠️ **Cảnh báo**: Hành động này sẽ xóa vĩnh viễn sách mẫu, toàn bộ cây mục lục và các vector nhúng (RAG). Mọi liên kết file âm thanh cũng sẽ bị dọn sạch.
+                {bookAction.action === "archive" ? "Sau khi gỡ, bạn có thể khôi phục lại sách bất kỳ lúc nào." : "Cảnh báo: hành động này sẽ xóa vĩnh viễn sách mẫu, mục lục, vector RAG và các tệp liên quan."}
               </div>
 
               <div className="flex items-center gap-3 pt-3 border-t border-zinc-800">
                 <button
-                  onClick={() => setConfirmDeleteBook(null)}
+                  onClick={() => setBookAction(null)}
                   className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950/40 hover:bg-zinc-800 py-2 text-xs font-semibold text-zinc-300 transition-all"
-                  disabled={deleteMutation.isPending}
+                  disabled={bookActionMutation.isPending}
                 >
                   Hủy
                 </button>
                 <button
-                  onClick={() => deleteMutation.mutate(confirmDeleteBook.id)}
+                  onClick={() => bookActionMutation.mutate({ bookId: bookAction.book.id, action: bookAction.action })}
                   className="flex-1 rounded-xl bg-red-600 hover:bg-red-500 py-2 text-xs font-bold text-white transition-all disabled:opacity-50"
-                  disabled={deleteMutation.isPending}
+                  disabled={bookActionMutation.isPending}
                 >
-                  {deleteMutation.isPending ? "Đang xóa..." : "Đồng ý xóa"}
+                  {bookActionMutation.isPending ? "Đang xử lý..." : bookAction.action === "archive" ? "Đồng ý gỡ" : "Đồng ý xóa"}
                 </button>
               </div>
             </div>

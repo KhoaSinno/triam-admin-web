@@ -78,6 +78,9 @@ export type AdminBookListItem = {
   error_message: string | null;
   is_shared?: boolean;
   parent_shared_id?: string | null;
+  archived_at?: string | null;
+  clone_count?: number;
+  can_permanently_delete?: boolean;
   has_full_mode?: boolean;
   has_pareto_mode?: boolean;
   user_email?: string | null;
@@ -398,6 +401,24 @@ export type AdminBookUpdateMetadataPayload = {
   author?: string;
   is_shared?: boolean;
 };
+
+export type AdminBookLifecycleResponse = {
+  book_id: string;
+  clone_count: number;
+  message: string;
+};
+
+export async function archiveSystemBook(bookId: string): Promise<AdminBookLifecycleResponse> {
+  return adminFetch<AdminBookLifecycleResponse>(`/books/${bookId}/archive`, { method: "POST" });
+}
+
+export async function restoreSystemBook(bookId: string): Promise<AdminBookLifecycleResponse> {
+  return adminFetch<AdminBookLifecycleResponse>(`/books/${bookId}/restore`, { method: "POST" });
+}
+
+export async function purgeSystemBook(bookId: string): Promise<AdminBookLifecycleResponse> {
+  return adminFetch<AdminBookLifecycleResponse>(`/books/${bookId}/purge`, { method: "DELETE" });
+}
 
 export type AdminBookSummaryResponse = {
   book_id: string;

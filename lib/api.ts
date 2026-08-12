@@ -343,16 +343,62 @@ export type AdminExportSectionItem = {
   chunks: AdminExportChunkItem[];
 };
 
+export type AdminExportLearningUnitSegmentItem = {
+  segment_index: number;
+  text_content: string | null;
+  audio_url: string | null;
+  duration_ms: number | null;
+};
+
+export type AdminExportLearningUnitSourceItem = {
+  section_index: number;
+  section_title: string;
+  section_path: string;
+  page_start: number | null;
+  page_end: number | null;
+  source_order: number;
+};
+
+export type AdminExportLearningUnitItem = {
+  unit_index: number;
+  title: string;
+  unit_type: string;
+  status: string;
+  source_text_char_count: number;
+  estimated_tokens: number;
+  estimated_audio_seconds: number;
+  main_segment_count: number;
+  planner_reason: string | null;
+  error_message: string | null;
+  review_text: string | null;
+  review_audio_url: string | null;
+  sources: AdminExportLearningUnitSourceItem[];
+  segments: AdminExportLearningUnitSegmentItem[];
+};
+
+export type AdminExportLearningModeItem = {
+  mode: PlanMode;
+  total_units: number;
+  units: AdminExportLearningUnitItem[];
+};
+
 export type AdminBookExportResponse = {
+  export_format_version: number;
+  selected_mode: PlanMode | null;
   book_id: string;
   title: string;
   author: string | null;
   document_type: string | null;
   sections: AdminExportSectionItem[];
+  learning_modes: Partial<Record<PlanMode, AdminExportLearningModeItem>>;
 };
 
-export async function exportBookJson(bookId: string): Promise<AdminBookExportResponse> {
-  return adminFetch<AdminBookExportResponse>(`/books/${bookId}/export-json`);
+export async function exportBookJson(
+  bookId: string,
+  mode?: PlanMode,
+): Promise<AdminBookExportResponse> {
+  const query = mode ? `?mode=${mode}` : "";
+  return adminFetch<AdminBookExportResponse>(`/books/${bookId}/export-json${query}`);
 }
 
 export type AdminSegmentItem = {

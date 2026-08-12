@@ -19,6 +19,7 @@ import {
   AdminBookAudioUnitsResponse,
   AdminLearningUnitItem,
   AdminSegmentItem,
+  PlanMode,
 } from "@/lib/api";
 import { formatDate, formatDateShort, truncateId, getInitials } from "@/lib/utils";
 import {
@@ -79,6 +80,7 @@ export default function BookDetailPage() {
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
+  const [exportMode, setExportMode] = useState<PlanMode | "all">("all");
 
   // Metadata edit modal state
   const [showEditMetadataModal, setShowEditMetadataModal] = useState(false);
@@ -346,18 +348,19 @@ export default function BookDetailPage() {
     if (!book) return;
     try {
       setIsExporting(true);
-      const data = await exportBookJson(bookId);
+      const data = await exportBookJson(bookId, exportMode === "all" ? undefined : exportMode);
       const jsonStr = JSON.stringify(data, null, 2);
       const blob = new Blob([jsonStr], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${book.title}_rag_export.json`;
+      const modeSuffix = exportMode === "all" ? "all_modes" : `${exportMode}_mode`;
+      link.download = `${book.title}_${modeSuffix}_export.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast.success("Đã xuất tệp JSON cấu trúc sách thành công!");
+      toast.success(`Đã xuất JSON ${exportMode === "all" ? "cả hai mode" : `${exportMode.toUpperCase()} mode`} thành công!`);
     } catch (err) {
       toast.error("Lỗi xuất JSON: " + getErrorMessage(err));
     } finally {
@@ -444,15 +447,28 @@ export default function BookDetailPage() {
             Sửa Metadata
           </button>
 
-          {/* Export JSON Button */}
-          <button
-            onClick={handleExportJson}
-            disabled={isExporting}
-            className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
-          >
-            <Database className={`h-3.5 w-3.5 ${isExporting ? "animate-pulse" : ""}`} />
-            {isExporting ? "Đang xuất JSON..." : "Xuất JSON"}
-          </button>
+          <div className="flex items-center rounded-xl border border-zinc-800 bg-zinc-900/40">
+            <label htmlFor="export-mode" className="sr-only">Chế độ dữ liệu xuất JSON</label>
+            <select
+              id="export-mode"
+              value={exportMode}
+              onChange={(event) => setExportMode(event.target.value as PlanMode | "all")}
+              disabled={isExporting}
+              className="h-9 rounded-l-xl border-r border-zinc-800 bg-transparent px-2 text-xs font-semibold text-zinc-300 outline-none disabled:opacity-50"
+            >
+              <option value="all">Cả hai mode</option>
+              <option value="full">Full mode</option>
+              <option value="pareto">Pareto mode</option>
+            </select>
+            <button
+              onClick={handleExportJson}
+              disabled={isExporting}
+              className="inline-flex h-9 items-center gap-2 rounded-r-xl px-3 text-xs font-semibold text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white active:scale-95 disabled:opacity-50"
+            >
+              <Database className={`h-3.5 w-3.5 ${isExporting ? "animate-pulse" : ""}`} />
+              {isExporting ? "Đang xuất..." : "Xuất JSON"}
+            </button>
+          </div>
 
           {/* Refresh Button */}
           <button

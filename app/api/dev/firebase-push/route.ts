@@ -2,8 +2,12 @@ import { isFirebaseAdminConfigured, getFirebaseAdminMessaging } from "@/lib/fire
 
 export const runtime = "nodejs";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+const BACKEND_URL =
+  process.env.BACKEND_INTERNAL_URL ||
+  (process.env.NEXT_PUBLIC_API_BASE_URL &&
+  process.env.NEXT_PUBLIC_API_BASE_URL.startsWith("http")
+    ? process.env.NEXT_PUBLIC_API_BASE_URL
+    : "http://ec2-54-179-190-142.ap-southeast-1.compute.amazonaws.com:8000");
 
 type FirebasePushRequest = {
   targetType?: unknown;
@@ -34,7 +38,7 @@ async function assertAdmin(request: Request) {
     };
   }
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/admin/me`, {
+  const res = await fetch(`${BACKEND_URL}/api/v1/admin/me`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
